@@ -153,7 +153,7 @@ def main():
             args.dc_aug_param = None  # Mute the DC augmentation when learning synthetic data (in inner-loop epoch function) in oder to be consistent with DC paper.
 
 
-            for ol in range(args.outer_loop):
+            for ol in range(args.outer_loop): # NOTE this outer_loop is not the loop over different model initialization
 
                 ''' freeze the running mu and sigma for BatchNorm layers '''
                 # Synthetic data batch, e.g. only 1 image/batch, is too small to obtain stable mu and sigma.
@@ -206,7 +206,9 @@ def main():
                 if ol == args.outer_loop - 1:
                     break
 
-
+                # NOTE FOR WY: you may work on the following section of code to make it a federated version
+                # before update, the net.parameters can be replaced by a federated version
+                # aggregation can be calculated after local update, i.e., line 217
                 ''' update network '''
                 image_syn_train, label_syn_train = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach())  # avoid any unaware modification
                 dst_syn_train = TensorDataset(image_syn_train, label_syn_train)

@@ -86,7 +86,8 @@ def main():
         for ch in range(channel):
             print('real images channel %d, mean = %.4f, std = %.4f'%(ch, torch.mean(images_all[:, ch]), torch.std(images_all[:, ch])))
 
-
+        # NOTE for WY: the following lines need to be executed for every client in Federated version, see codes between marks <STARTS FROM ... ENDS HERE>
+        # STARTS FROM HERE
         ''' initialize the synthetic data '''
         image_syn = torch.randn(size=(num_classes*args.ipc, channel, im_size[0], im_size[1]), dtype=torch.float, requires_grad=True, device=args.device)
         label_syn = torch.tensor([np.ones(args.ipc)*i for i in range(num_classes)], dtype=torch.long, requires_grad=False, device=args.device).view(-1) # [0,0,0, 1,1,1, ..., 9,9,9]
@@ -104,6 +105,7 @@ def main():
         optimizer_img.zero_grad()
         criterion = nn.CrossEntropyLoss().to(args.device)
         print('%s training begins'%get_time())
+        # ENDS HERE
 
         # NOTE this iteration is over the different model initializations, 
         # i.e., the loop indixed by K in the paper, Algorithm 1 line 4
@@ -222,9 +224,14 @@ def main():
 
                 if ol == args.outer_loop - 1:
                     break
+                
+                # avoid any unaware modification
+                # the following line copy the synthetic data from the running/working variables to another variable for saving purpose
+                # so that variables image_syn_train, label_syn_train needs to be made distributed for each client to avoid overlapping
+                image_syn_train, label_syn_train = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach())  
+                
 
                 ''' update network '''
-                image_syn_train, label_syn_train = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach())  # avoid any unaware modification
                 dst_syn_train = TensorDataset(image_syn_train, label_syn_train)
                 trainloader = torch.utils.data.DataLoader(dst_syn_train, batch_size=args.batch_train, shuffle=True, num_workers=0)
                 

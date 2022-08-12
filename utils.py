@@ -335,6 +335,8 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug):
 
 
 def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args):
+    '''this function trains new models using condensed/synthetic data then evaluate the accuracy of this resulting model
+    '''
     net = net.to(args.device)
     images_train = images_train.to(args.device)
     labels_train = labels_train.to(args.device)

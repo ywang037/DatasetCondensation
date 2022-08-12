@@ -102,7 +102,8 @@ def main():
         criterion = nn.CrossEntropyLoss().to(args.device)
         print('%s training begins'%get_time())
 
-        for it in range(args.Iteration+1):
+        # NOTE this iteration is over the different model initializations, i.e., the loop indixed by K in the paper, Algorithm 1 line 4
+        for it in range(args.Iteration+1): 
 
             ''' Evaluate synthetic data '''
             if it in eval_it_pool:
@@ -152,8 +153,10 @@ def main():
             loss_avg = 0
             args.dc_aug_param = None  # Mute the DC augmentation when learning synthetic data (in inner-loop epoch function) in oder to be consistent with DC paper.
 
-
-            for ol in range(args.outer_loop): # NOTE this outer_loop is not the loop over different model initialization
+            
+            # NOTE this outer_loop is not the loop over different model initialization
+            # this loop is indixed by T in the paper, Algorithm 1 line 4
+            for ol in range(args.outer_loop): 
 
                 ''' freeze the running mu and sigma for BatchNorm layers '''
                 # Synthetic data batch, e.g. only 1 image/batch, is too small to obtain stable mu and sigma.
@@ -176,6 +179,8 @@ def main():
 
                 ''' update synthetic data '''
                 loss = torch.tensor(0.0).to(args.device)
+                
+                # NOTE this loop is over labels, i.e., line 5-8 in Algorithm 1
                 for c in range(num_classes):
                     img_real = get_images(c, args.batch_real)
                     lab_real = torch.ones((img_real.shape[0],), device=args.device, dtype=torch.long) * c
@@ -208,11 +213,13 @@ def main():
 
                 # NOTE FOR WY: you may work on the following section of code to make it a federated version
                 # before update, the net.parameters can be replaced by a federated version
-                # aggregation can be calculated after local update, i.e., line 217
+                # aggregation can be calculated after local update
                 ''' update network '''
                 image_syn_train, label_syn_train = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach())  # avoid any unaware modification
                 dst_syn_train = TensorDataset(image_syn_train, label_syn_train)
                 trainloader = torch.utils.data.DataLoader(dst_syn_train, batch_size=args.batch_train, shuffle=True, num_workers=0)
+                
+                # NOTE this loop is iterated for local model updates by SGD, i.e., line 9 in Algorithm 1
                 for il in range(args.inner_loop):
                     epoch('train', trainloader, net, optimizer_net, criterion, args, aug = True if args.dsa else False)
 

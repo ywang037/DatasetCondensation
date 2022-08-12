@@ -58,7 +58,8 @@ def main():
         accs_all_exps[key] = []
     data_save = []
 
-
+    # NOTE for WY: the author run multiple trial of experiments using the for loop over exp and args.num_exp is the number of trials
+    # if you want to control the reproducibility, then freeze the randomness outside the following loop 
     for exp in range(args.num_exp):
         print('\n================== Exp %d ==================\n '%exp)
         print('Hyper-parameters: \n', args.__dict__)
@@ -237,7 +238,9 @@ def main():
                 
                 # NOTE the following loop is iterated for local model updates by SGD, 
                 # i.e., line 9 in Algorithm 1 the args.inner_loop controls number of SGD steps, 
-                # the number of args.inner_loop will be the number of local updates, here we might not have local epoch
+                # the number of args.inner_loop will be the number of local updates, 
+                # note that because number of sythetic data is small, however the batch size is large by default, e.g., 256
+                # so that one epoch may only have one SGD update using all the available synthetic data
                 for il in range(args.inner_loop):
                     epoch('train', trainloader, net, optimizer_net, criterion, args, aug = True if args.dsa else False)
                 

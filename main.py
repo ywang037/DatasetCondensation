@@ -211,15 +211,15 @@ def main():
                 if ol == args.outer_loop - 1:
                     break
 
-                # NOTE FOR WY: you may work on the following section of code to make it a federated version
-                # before update, the net.parameters can be replaced by a federated version
-                # aggregation can be calculated after local update
                 ''' update network '''
                 image_syn_train, label_syn_train = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach())  # avoid any unaware modification
                 dst_syn_train = TensorDataset(image_syn_train, label_syn_train)
                 trainloader = torch.utils.data.DataLoader(dst_syn_train, batch_size=args.batch_train, shuffle=True, num_workers=0)
                 
-                # NOTE this loop is iterated for local model updates by SGD, i.e., line 9 in Algorithm 1
+                # NOTE the following loop is iterated for local model updates by SGD, i.e., line 9 in Algorithm 1
+                # NOTE FOR WY: you may wish to modify the following loop to make it a federated version
+                # before update, the net.parameters can be replaced by a aggregated version
+                # aggregation can be calculated after local update
                 for il in range(args.inner_loop):
                     epoch('train', trainloader, net, optimizer_net, criterion, args, aug = True if args.dsa else False)
 

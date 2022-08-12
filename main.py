@@ -8,6 +8,8 @@ import torch.nn as nn
 from torchvision.utils import save_image
 from utils import get_loops, get_dataset, get_network, get_eval_pool, evaluate_synset, get_daparam, match_loss, get_time, TensorDataset, epoch, DiffAugment, ParamDiffAug
 
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 def main():
 
@@ -102,7 +104,8 @@ def main():
         criterion = nn.CrossEntropyLoss().to(args.device)
         print('%s training begins'%get_time())
 
-        # NOTE this iteration is over the different model initializations, i.e., the loop indixed by K in the paper, Algorithm 1 line 4
+        # NOTE this iteration is over the different model initializations, 
+        # i.e., the loop indixed by K in the paper, Algorithm 1 line 4
         for it in range(args.Iteration+1): 
 
             ''' Evaluate synthetic data '''
@@ -216,13 +219,15 @@ def main():
                 dst_syn_train = TensorDataset(image_syn_train, label_syn_train)
                 trainloader = torch.utils.data.DataLoader(dst_syn_train, batch_size=args.batch_train, shuffle=True, num_workers=0)
                 
-                # NOTE the following loop is iterated for local model updates by SGD, i.e., line 9 in Algorithm 1
-                # NOTE FOR WY: you may wish to modify the following loop to make it a federated version
-                # before update, the net.parameters can be replaced by a aggregated version
-                # aggregation can be calculated after local update
+                # NOTE the following loop is iterated for local model updates by SGD, 
+                # i.e., line 9 in Algorithm 1 the args.inner_loop controls number of SGD steps, 
+                # the number of args.inner_loop will be the number of local updates, here we might not have local epoch
                 for il in range(args.inner_loop):
                     epoch('train', trainloader, net, optimizer_net, criterion, args, aug = True if args.dsa else False)
 
+            # NOTE FOR WY: you may wish to modify the above loop to make it a federated version
+            # before update, the net.parameters can be replaced by a aggregated version
+            # aggregation can be calculated here after the above "outer loop", i.e., the loop over t
 
             loss_avg /= (num_classes*args.outer_loop)
 

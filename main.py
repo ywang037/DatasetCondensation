@@ -45,16 +45,17 @@ def main():
     if not os.path.exists(args.save_path):
         os.mkdir(args.save_path)
 
-    eval_it_pool = np.arange(0, args.Iteration+1, 500).tolist() if args.eval_mode == 'S' or args.eval_mode == 'SS' else [args.Iteration] # The list of iterations when we evaluate models and record results.
+    # The list of iterations when we evaluate models and record results.
+    # the defualt setting is to evaluate every 500 iterations, i.e., k=n*500
+    eval_it_pool = np.arange(0, args.Iteration+1, 500).tolist() if args.eval_mode == 'S' or args.eval_mode == 'SS' else [args.Iteration] 
     print('eval_it_pool: ', eval_it_pool)
     channel, im_size, num_classes, class_names, mean, std, dst_train, dst_test, testloader = get_dataset(args.dataset, args.data_path)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
 
-
-    accs_all_exps = dict() # record performances of all experiments
+    # record performances of all experiments
+    accs_all_exps = dict() 
     for key in model_eval_pool:
         accs_all_exps[key] = []
-
     data_save = []
 
 
@@ -108,6 +109,7 @@ def main():
         # i.e., the loop indixed by K in the paper, Algorithm 1 line 4
         for it in range(args.Iteration+1): 
 
+            # NOTE for WY: the following loop needs to be executed for every client in Federated version
             ''' Evaluate synthetic data '''
             if it in eval_it_pool:
                 for model_eval in model_eval_pool:
@@ -128,8 +130,13 @@ def main():
 
                     accs = []
                     for it_eval in range(args.num_eval):
-                        net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) # get a random model
-                        image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) # avoid any unaware modification
+                        # get a random model
+                        net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) 
+                        
+                        # avoid any unaware modification
+                        image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) 
+                        
+                        # trains new models using condensed/synthetic data then evaluate the accuracy of this resulting model
                         _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args)
                         accs.append(acc_test)
                     print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
@@ -146,9 +153,11 @@ def main():
                 image_syn_vis[image_syn_vis>1] = 1.0
                 save_image(image_syn_vis, save_name, nrow=args.ipc) # Trying normalize = True/False may get better visual effects.
 
-
+            
+            # NOTE for WY: the following lines need to be executed for every client in Federated version, see codes between marks <start from ... ends here>
+            # start from here
             ''' Train synthetic data '''
-            net = get_network(args.model, channel, num_classes, im_size).to(args.device) # get a random model
+            net = get_network(args.model, channel, num_classes, im_size).to(args.device) # get a random model, better to rename net to net_train
             net.train()
             net_parameters = list(net.parameters())
             optimizer_net = torch.optim.SGD(net.parameters(), lr=args.lr_net)  # optimizer_img for synthetic data
@@ -224,10 +233,13 @@ def main():
                 # the number of args.inner_loop will be the number of local updates, here we might not have local epoch
                 for il in range(args.inner_loop):
                     epoch('train', trainloader, net, optimizer_net, criterion, args, aug = True if args.dsa else False)
-
+                
+            # ends here
+                
             # NOTE FOR WY: you may wish to modify the above loop to make it a federated version
-            # before update, the net.parameters can be replaced by a aggregated version
-            # aggregation can be calculated here after the above "outer loop", i.e., the loop over t
+            # E.g., before the above loop, the net.parameters can be replaced by a aggregated version
+            # the aggregation can be calculated here after the above "outer loop", i.e., the loop over t
+            # <Place holder for model parameter aggregation>
 
             loss_avg /= (num_classes*args.outer_loop)
 

@@ -9,6 +9,178 @@ from torchvision import datasets, transforms
 from scipy.ndimage.interpolation import rotate as scipyrotate
 from networks import MLP, ConvNet, LeNet, AlexNet, AlexNetBN, VGG11, VGG11BN, ResNet18, ResNet18BN_AP, ResNet18BN
 
+import matplotlib.pyplot as plt
+from torch.utils.data import Subset
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
+'''WY's add on'''
+class CustomSubset(Subset):
+    '''A custom subset class with customizable data transformation'''
+    def __init__(self, dataset, indices, subset_transform=None):
+        super().__init__(dataset, indices)
+        self.subset_transform = subset_transform
+        
+    def __getitem__(self, idx):
+        x, y = self.dataset[self.indices[idx]]
+        
+        if self.subset_transform:
+            x = self.subset_transform(x)
+      
+        return x, y  
+
+def data_preparation(dataset):
+    data_set, data_info = {}, {}
+    # num_classes=10
+    if dataset == 'mnist':
+        channel = 1
+        im_size = (28, 28)
+        num_classes = 10
+        mean = [0.1307]
+        std = [0.3081]
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)])
+        data_train = datasets.MNIST(root="./data", train=True, download=True, transform=transform) # no augmentation
+        data_test = datasets.MNIST(root="./data", train=False, download=True, transform=transform)
+        class_names = [str(c) for c in range(num_classes)]
+        train_labels = data_train.targets.numpy()
+        test_labels = data_test.targets.numpy()
+        mapp = np.array(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], dtype='<U1')
+        # cnn = ConvNet(n_class=num_classes)
+
+    elif dataset == 'cifar10':
+        import ssl
+        ssl._create_default_https_context = ssl._create_unverified_context
+        channel = 3
+        im_size = (32, 32)
+        num_classes = 10
+        mean = [0.4914, 0.4822, 0.4465]
+        std = [0.2023, 0.1994, 0.2010]
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)])
+        data_train = datasets.CIFAR10(root='./data/CIFAR10', train=True, download=True, transform=transform) # no augmentation
+        data_test = datasets.CIFAR10(root='./data/CIFAR10', train=False, download=True, transform=transform)
+        class_names = data_train.classes
+        train_labels = np.array(data_train.targets, dtype=np.int32)
+        test_labels = np.array(data_test.targets, dtype=np.int32)
+        mapp = np.array(['plane','car','bird','cat','deer','dog','frog','horse','ship','truck'], dtype='<U1')
+        # cnn = CNNCifarTorch()
+
+    else:
+        exit('unknown dataset: %s'%dataset)
+
+    data_set['train_data']=data_train
+    data_set['test_data']=data_test
+    data_set['transform']=transform
+    data_set['train_labels']=train_labels
+    data_set['test_labels']=test_labels
+    data_set['mapp']=mapp
+
+    data_info['channel']=channel
+    data_info['img_size']=im_size
+    data_info['num_classes']=num_classes
+    data_info['class_names']=class_names
+    data_info['mean']=mean
+    data_info['std']=std
+    
+    testloader_server = torch.utils.data.DataLoader(data_test, batch_size=256, shuffle=False, num_workers=0)
+    
+    return data_set, data_info, testloader_server
+
+    # testloader = torch.utils.data.DataLoader(data_test, batch_size=256, shuffle=False, num_workers=0)
+    # return channel, im_size, num_classes, class_names, mean, std, data_train, data_test, testloader
+
+def split_data_dirichlet(data_idcs, labels, classes, n_clients, label_distribution):
+    """
+    arguments:
+        data_idcs: indices of data to be split
+        labels: labels of all the data from where data_idcs is extracted
+        classes: a list of labels of the data to be split
+        n_clients: number of clients to whom data will be assigned
+        label_distribution: the Dirichelet distribution to be used
+    return:
+        a list where each element is a list of indices for the data assigned to each client 
+    """
+    
+    class_idcs = [np.argwhere(labels[data_idcs]==y).flatten() for y in classes]
+
+    client_idcs = [[] for _ in range(n_clients)]
+    for c, fracs in zip(class_idcs, label_distribution):
+        for i, idcs in enumerate(np.split(c, (np.cumsum(fracs)[:-1]*len(c)).astype(int))):
+            client_idcs[i] += [idcs]
+
+    client_idcs = [data_idcs[np.concatenate(idcs)] for idcs in client_idcs]
+    return client_idcs
+
+def show_data_histogram_client(labels, client_idcs, client_id, mapp):
+    plt.figure(figsize=(20,3))
+    plt.hist(
+        labels[client_idcs], stacked=True, bins=np.arange(min(labels)-0.5, max(labels) + 1.5, 1),label="Client {}".format(client_id)
+        )
+    plt.xticks(np.arange(10), mapp)
+    plt.legend()
+    plt.show()
+
+def gen_data_partition_iid(data, num_classes, labels, data_mapp, num_clients, generator, verbose_hist=True):
+    all_data_idcs = np.arange(len(data))
+    client_data_idcs = generator.choice(all_data_idcs, (num_clients, int(len(all_data_idcs)/num_clients)), replace=False)
+    if verbose_hist:
+        for i in range(num_clients):
+            show_data_histogram_client(labels=labels,client_idcs=client_data_idcs[i],client_id=i,mapp=data_mapp)
+    
+    # then identify the classes that each client has
+    client_class_dict={}
+    for i in range(num_clients):
+        label_collector = []
+        for j in range(num_classes):
+            if sum(labels[client_data_idcs[i]]==j):
+                label_collector.append(j)
+        client_class_dict[i] = label_collector
+
+    return client_data_idcs, client_class_dict
+
+def gen_data_partition_dirichlet(data, num_classes, labels, data_mapp, num_clients, generator, client_alpha=1.0, client_label_dist=None, verbose_hist=True):
+    # num_classes = len(data.classes)
+    # all_labels = data.targets.numpy()
+    # all_labels = np.array(data.targets, dtype=np.int32)
+    all_data_idcs = np.arange(len(data))
+    if client_label_dist is None:
+        client_label_dist = generator.dirichlet([client_alpha]*num_clients, num_classes)
+    client_data_idcs = split_data_dirichlet(
+            data_idcs=all_data_idcs, 
+            labels=labels, 
+            classes=np.arange(num_classes).tolist(), 
+            n_clients=num_clients, 
+            label_distribution=client_label_dist
+        )
+    
+    # then identify the classes that each client has
+    client_class_dict={}
+    for i in range(num_clients):
+        label_collector = []
+        for j in range(num_classes):
+            if sum(labels[client_data_idcs[i]]==j):
+                label_collector.append(j)
+        client_class_dict[i] = label_collector
+   
+    if verbose_hist:
+        for i in range(num_clients):
+            show_data_histogram_client(labels=labels,client_idcs=client_data_idcs[i],client_id=i,mapp=data_mapp)
+   
+    return client_label_dist, client_data_idcs, client_class_dict
+
+def make_client_dataset_from_partition(data, num_clients, data_idcs, transform):
+    client_data = {}
+    for client_id in range(num_clients):
+        client_data[client_id] = CustomSubset(dataset=data, indices=data_idcs[client_id], subset_transform=transform)
+    return client_data
+
+def copy_parameters(target, source):
+    """copy weight parameters from source model to target model
+    args: target, source is torch.nn.Parameters.parameters, e.g., model.parameters()
+    """
+    for target_param, src_param in zip(target, source):
+        target_param.data = src_param.data.clone()
+
+'''the original code'''
 def get_dataset(dataset, data_path):
     if dataset == 'MNIST':
         channel = 1

@@ -124,8 +124,8 @@ def main(args):
             verbose_hist=False)
 
         # make client data using the generated partition
-        client_data_train = make_client_dataset_from_partition(data_set['train_data'], args.num_clients, client_test_data_idcs, data_set['transform'])
-        client_data_test = make_client_dataset_from_partition(data_set['test_data'], args.num_clients, client_test_data_idcs, data_set['transform'])
+        client_data_train = make_client_dataset_from_partition(data_set['train_data'], args.num_clients, client_test_data_idcs)
+        client_data_test = make_client_dataset_from_partition(data_set['test_data'], args.num_clients, client_test_data_idcs)
 
         '''set the architecture for the model to be trained'''
         net_train = get_network(args.model, data_info['channel'], data_info['num_classes'], data_info['img_size']).to(args.device)

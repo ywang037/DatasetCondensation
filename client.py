@@ -34,7 +34,7 @@ class ClientDC(object):
 
         self.local_data_train = data_train
         self.local_data_test = data_test
-        # self.n_data_train = len(self.local_data_train)
+        self.num_local_data_train = len(self.local_data_train)
         # self.n_data_test = len(data_test)
         self.batch_size_learn_data = args.batch_real
         self.batch_size_learn_model = args.batch_train
@@ -68,7 +68,7 @@ class ClientDC(object):
         # labels_all = []
         # indices_class = [[] for c in range(self.num_classes)]
 
-        self.images_all = [torch.unsqueeze(self.local_data_train[i][0], dim=0) for i in range(len(self.local_data_train))]
+        self.images_all = [torch.unsqueeze(self.local_data_train[i][0], dim=0) for i in range(self.num_local_data_train)]
         self.labels_all = [self.local_data_train[i][1] for i in range(len(self.local_data_train))]
         for i, lab in enumerate(self.labels_all):
             self.indices_class[lab].append(i)

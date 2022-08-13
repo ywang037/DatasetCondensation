@@ -121,7 +121,7 @@ def show_data_histogram_client(labels, client_idcs, client_id, mapp):
 
 def gen_data_partition_iid(data, num_classes, labels, data_mapp, num_clients, generator, verbose_hist=True):
     all_data_idcs = np.arange(len(data))
-    client_data_idcs = generator.choice(all_data_idcs, (num_clients, int(len(all_data_idcs)/num_clients)), replace=False)
+    client_data_idcs = generator.choice(all_data_idcs, (num_clients, int(len(data)/num_clients)), replace=False)
     if verbose_hist:
         for i in range(num_clients):
             show_data_histogram_client(labels=labels,client_idcs=client_data_idcs[i],client_id=i,mapp=data_mapp)
@@ -167,7 +167,7 @@ def gen_data_partition_dirichlet(data, num_classes, labels, data_mapp, num_clien
    
     return client_label_dist, client_data_idcs, client_class_dict
 
-def make_client_dataset_from_partition(data, num_clients, data_idcs, transform):
+def make_client_dataset_from_partition(data, num_clients, data_idcs, transform=None):
     client_data = {}
     for client_id in range(num_clients):
         client_data[client_id] = CustomSubset(dataset=data, indices=data_idcs[client_id], subset_transform=transform)

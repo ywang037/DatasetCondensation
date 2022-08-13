@@ -15,6 +15,9 @@ data
 data/
 models
 models/
+server
+utils/
+clients/
 
 # IPython notebook checkpoints
 .ipynb_checkpoints

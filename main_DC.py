@@ -184,6 +184,9 @@ def main():
                 loss = torch.tensor(0.0).to(args.device)
                 
                 # NOTE this loop is over labels, i.e., line 5-8 in Algorithm 1
+                # NOTE that, the following synthetic data learning process is looped over only one batch of real data, i.e., one step of SGD for learning data, 
+                # in actual one can use multiple steps by looping the following sections, but one may need to use non-replace method to randomly draw real data, just like a data loader
+                # update only once but over K iterations equivalent to K steps of SGD for learning the data
                 for c in range(num_classes):
                     img_real = get_images(c, args.batch_real)
                     lab_real = torch.ones((img_real.shape[0],), device=args.device, dtype=torch.long) * c

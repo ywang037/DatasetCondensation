@@ -70,18 +70,20 @@ def main(args):
         torch.cuda.manual_seed_all(args.seed)
     rng = np.random.default_rng(args.seed)
     
+    accs_all_clients_all_exps = [dict() for i in range(args.num_clients)]
+    for i in range(args.num_clients):
+        for key in model_eval_pool:
+            accs_all_clients_all_exps[i][key]=[]
+    data_save_all_clients = [[] for i in range(args.num_clients)]
 
-
-
-    # NOTE for WY: the author run multiple trial of experiments using the for loop over exp and args.num_exp is the number of trials
-    # if you want to control the reproducibility, then freeze the randomness outside the following loop 
+    ''' looping over multiple experiment trials '''
     for exp in range(args.num_exp):
         print('\n================== Exp %d ==================\n '%exp)
         print('Hyper-parameters: \n', args.__dict__)
         print('Evaluation model pool: ', model_eval_pool)
 
         '''split data set for each client'''
-        # generate training data partitioning
+        # generate training data partitioning using dirichlet distribution
         # client_label_dist, client_train_data_idcs, client_train_class_dict = gen_data_partition_dirichlet(
         #     data=data_set['train_data'], 
         #     num_classes=data_info['num_classes'], 
@@ -93,14 +95,6 @@ def main(args):
         #     client_label_dist=None, 
         #     verbose_hist=False
         #     )
-        client_train_data_idcs, client_train_class_dict = gen_data_partition_iid(
-            data=data_set['train_data'], 
-            num_classes=data_info['num_classes'], 
-            labels=data_set['train_labels'], 
-            data_mapp=data_set['mapp'],
-            num_clients=args.num_clients, 
-            generator=rng, 
-            verbose_hist=False)
 
         # generate testing data partitioning
         # _, client_test_data_idcs, client_test_class_dict = gen_data_partition_dirichlet(
@@ -114,6 +108,17 @@ def main(args):
         #     client_label_dist=client_label_dist, 
         #     verbose_hist=False
         #     )
+        
+        # generate training data partitioning using IID method
+        client_train_data_idcs, client_train_class_dict = gen_data_partition_iid(
+            data=data_set['train_data'], 
+            num_classes=data_info['num_classes'], 
+            labels=data_set['train_labels'], 
+            data_mapp=data_set['mapp'],
+            num_clients=args.num_clients, 
+            generator=rng, 
+            verbose_hist=False)
+
         client_test_data_idcs, client_test_class_dict = gen_data_partition_iid(
             data=data_set['test_data'], 
             num_classes=data_info['num_classes'], 
@@ -124,7 +129,7 @@ def main(args):
             verbose_hist=False)
 
         # make client data using the generated partition
-        client_data_train = make_client_dataset_from_partition(data_set['train_data'], args.num_clients, client_test_data_idcs)
+        client_data_train = make_client_dataset_from_partition(data_set['train_data'], args.num_clients, client_train_data_idcs)
         client_data_test = make_client_dataset_from_partition(data_set['test_data'], args.num_clients, client_test_data_idcs)
 
         '''set the architecture for the model to be trained'''
@@ -137,196 +142,77 @@ def main(args):
         server = ServerDC(args, net_train, clients)
         print('FL server created.')
 
-        ''' organize the real dataset '''
-        # to be repeated for every client
-        images_all = []
-        labels_all = []
-        indices_class = [[] for c in range(num_classes)]
+        for client in clients:
+            ''' organize the real dataset '''
+            client.organize_local_real_data()
+            for ch in range(client.channel):
+                print('real images channel %d, mean = %.4f, std = %.4f'%(ch, torch.mean(client.images_all[:, ch]), torch.std(client.images_all[:, ch])))
+            
+            ''' initialize the synthetic data '''
+            client.syn_data_init()
 
-        images_all = [torch.unsqueeze(dst_train[i][0], dim=0) for i in range(len(dst_train))]
-        labels_all = [dst_train[i][1] for i in range(len(dst_train))]
-        for i, lab in enumerate(labels_all):
-            indices_class[lab].append(i)
-        images_all = torch.cat(images_all, dim=0).to(args.device)
-        labels_all = torch.tensor(labels_all, dtype=torch.long, device=args.device)
-
-        for c in range(num_classes):
-            print('class c = %d: %d real images'%(c, len(indices_class[c])))
-
-        def get_images(c, n): # get random n images from class c
-            idx_shuffle = np.random.permutation(indices_class[c])[:n]
-            return images_all[idx_shuffle]
-
-        for ch in range(channel):
-            print('real images channel %d, mean = %.4f, std = %.4f'%(ch, torch.mean(images_all[:, ch]), torch.std(images_all[:, ch])))
-
-        # NOTE for WY: the following lines need to be executed for every client in Federated version, see codes between marks <STARTS FROM ... ENDS HERE>
-        # STARTS FROM HERE
-        ''' initialize the synthetic data '''
-        image_syn = torch.randn(size=(num_classes*args.ipc, channel, im_size[0], im_size[1]), dtype=torch.float, requires_grad=True, device=args.device)
-        label_syn = torch.tensor([np.ones(args.ipc)*i for i in range(num_classes)], dtype=torch.long, requires_grad=False, device=args.device).view(-1) # [0,0,0, 1,1,1, ..., 9,9,9]
-
-        if args.init == 'real':
-            print('initialize synthetic data from random real images')
-            for c in range(num_classes):
-                image_syn.data[c*args.ipc:(c+1)*args.ipc] = get_images(c, args.ipc).detach().data
-        else:
-            print('initialize synthetic data from random noise')
-
-
-        ''' training '''
-        optimizer_img = torch.optim.SGD([image_syn, ], lr=args.lr_img, momentum=0.5) # optimizer_img for synthetic data
-        optimizer_img.zero_grad()
-        criterion = nn.CrossEntropyLoss().to(args.device)
+        ''' training starts from here '''
         print('%s training begins'%get_time())
-        # ENDS HERE
-
+        
         # NOTE this iteration is over the different model initializations, 
         # i.e., the loop indixed by K in the paper, Algorithm 1 line 4
         for it in range(args.Iteration+1): 
+            for client in clients:
+                ''' Evaluate synthetic data '''
+                client.syn_data_eval(exp, it)
 
-            # NOTE for WY: the following loop needs to be executed for every client in Federated version
-            ''' Evaluate synthetic data '''
-            if it in eval_it_pool:
-                for model_eval in model_eval_pool:
-                    print('-------------------------\nEvaluation\nmodel_train = %s, model_eval = %s, iteration = %d'%(args.model, model_eval, it))
-                    args.dc_aug_param = get_daparam(args.dataset, args.model, model_eval, args.ipc) # This augmentation parameter set is only for DC method. It will be muted when args.dsa is True.
-                    print('DC augmentation parameters: \n', args.dc_aug_param)
-                    args.epoch_eval_train = 300
+                ''' Train synthetic data '''
+                optimizer_net = client.net_trainer_setup(client.model_train)
 
-                    accs = []
-                    for it_eval in range(args.num_eval):
-                        # get a random model
-                        net_eval = get_network(model_eval, channel, num_classes, im_size).to(args.device) 
-                        
-                        # avoid any unaware modification
-                        image_syn_eval, label_syn_eval = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach()) 
-                        
-                        # trains new models using condensed/synthetic data then evaluate the accuracy of this resulting model
-                        _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, testloader, args)
-                        accs.append(acc_test)
-                    print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
+                # NOTE this outer_loop is not the loop over different model initialization
+                # this loop is indixed by T in the paper, Algorithm 1 line 4
+                for ol in range(args.outer_loop): 
 
-                    if it == args.Iteration: # record the final results
-                        accs_all_exps[model_eval] += accs
+                    ''' freeze the running mu and sigma for BatchNorm layers '''
+                    # Synthetic data batch, e.g. only 1 image/batch, is too small to obtain stable mu and sigma.
+                    # So, we calculate and freeze mu and sigma for BatchNorm layer with real data batch ahead.
+                    # This would make the training with BatchNorm layers easier.
 
-                ''' visualize and save '''
-                save_name = os.path.join(args.save_path, 'vis_%s_%s_%s_%dipc_exp%d_iter%d.png'%(args.method, args.dataset, args.model, args.ipc, exp, it))
-                image_syn_vis = copy.deepcopy(image_syn.detach().cpu())
-                for ch in range(channel):
-                    image_syn_vis[:, ch] = image_syn_vis[:, ch]  * std[ch] + mean[ch]
-                image_syn_vis[image_syn_vis<0] = 0.0
-                image_syn_vis[image_syn_vis>1] = 1.0
-                save_image(image_syn_vis, save_name, nrow=args.ipc) # Trying normalize = True/False may get better visual effects.
+                    BN_flag = False
+                    BNSizePC = 16  # for batch normalization
+                    for module in client.model_train.modules():
+                        if 'BatchNorm' in module._get_name(): #BatchNorm
+                            BN_flag = True
+                    if BN_flag:
+                        img_real = torch.cat([client.get_images(c, BNSizePC) for c in range(client.num_classes)], dim=0)
+                        client.model_train.train() # for updating the mu, sigma of BatchNorm
+                        output_real = client.model_train(img_real) # get running mu, sigma
+                        for module in client.model_train.modules():
+                            if 'BatchNorm' in module._get_name():  #BatchNorm
+                                module.eval() # fix mu and sigma of every BatchNorm layer
 
-            # NOTE the following will be modified to federated rounds
-            # NOTE for WY: the following lines need to be executed for every client in Federated version, see codes between marks <start from ... ends here>
-            # start from here
-            ''' Train synthetic data '''
-            net = get_network(args.model, channel, num_classes, im_size).to(args.device) # get a random model, better to rename net to net_train
-            net.train()
-            net_parameters = list(net.parameters())
-            optimizer_net = torch.optim.SGD(net.parameters(), lr=args.lr_net)  # optimizer_img for synthetic data
-            optimizer_net.zero_grad()
-            loss_avg = 0
-            args.dc_aug_param = None  # Mute the DC augmentation when learning synthetic data (in inner-loop epoch function) in oder to be consistent with DC paper.
+                    ''' fetch server model weights '''
+                    client.sync_with_server(server, method='state')
 
-            
-            # NOTE this outer_loop is not the loop over different model initialization
-            # this loop is indixed by T in the paper, Algorithm 1 line 4
-            for ol in range(args.outer_loop): 
+                    ''' update synthetic data '''
+                    client.syn_data_update(client.model_train, optimizer_net)
 
-                ''' freeze the running mu and sigma for BatchNorm layers '''
-                # Synthetic data batch, e.g. only 1 image/batch, is too small to obtain stable mu and sigma.
-                # So, we calculate and freeze mu and sigma for BatchNorm layer with real data batch ahead.
-                # This would make the training with BatchNorm layers easier.
+                    ''' update network '''
+                    client.network_update(client.model_train, client.optimizer_net)
+                    client.local_model_state = copy.deepcopy(client.model_train.state_dict())
+                    
+                '''Server perform model aggregation upon local network updates'''
+                server.net_weights_aggregation(clients)
 
-                BN_flag = False
-                BNSizePC = 16  # for batch normalization
-                for module in net.modules():
-                    if 'BatchNorm' in module._get_name(): #BatchNorm
-                        BN_flag = True
-                if BN_flag:
-                    img_real = torch.cat([get_images(c, BNSizePC) for c in range(num_classes)], dim=0)
-                    net.train() # for updating the mu, sigma of BatchNorm
-                    output_real = net(img_real) # get running mu, sigma
-                    for module in net.modules():
-                        if 'BatchNorm' in module._get_name():  #BatchNorm
-                            module.eval() # fix mu and sigma of every BatchNorm layer
-
-
-                ''' update synthetic data '''
-                loss = torch.tensor(0.0).to(args.device)
-                
-                # NOTE this loop is over labels, i.e., line 5-8 in Algorithm 1
-                # NOTE that, the following synthetic data learning process is looped over only one batch of real data, i.e., one step of SGD for learning data, 
-                # in actual one can use multiple steps by looping the following sections, but one may need to use non-replace method to randomly draw real data, just like a data loader
-                # update only once but over K iterations equivalent to K steps of SGD for learning the data
-                for c in range(num_classes):
-                    img_real = get_images(c, args.batch_real)
-                    lab_real = torch.ones((img_real.shape[0],), device=args.device, dtype=torch.long) * c
-                    img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
-                    lab_syn = torch.ones((args.ipc,), device=args.device, dtype=torch.long) * c
-
-                    output_real = net(img_real)
-                    loss_real = criterion(output_real, lab_real)
-                    gw_real = torch.autograd.grad(loss_real, net_parameters)
-                    gw_real = list((_.detach().clone() for _ in gw_real))
-
-                    output_syn = net(img_syn)
-                    loss_syn = criterion(output_syn, lab_syn)
-                    gw_syn = torch.autograd.grad(loss_syn, net_parameters, create_graph=True)
-
-                    loss += match_loss(gw_syn, gw_real, args)
-
-                optimizer_img.zero_grad()
-                loss.backward()
-                optimizer_img.step()
-                loss_avg += loss.item()
-
-                if ol == args.outer_loop - 1:
-                    break
-                
-                # avoid any unaware modification
-                # the following line copy the synthetic data from the running/working variables to another variable for saving purpose
-                # so that variables image_syn_train, label_syn_train needs to be made distributed for each client to avoid overlapping
-                image_syn_train, label_syn_train = copy.deepcopy(image_syn.detach()), copy.deepcopy(label_syn.detach())  
-                
-
-                ''' update network '''
-                dst_syn_train = TensorDataset(image_syn_train, label_syn_train)
-                trainloader = torch.utils.data.DataLoader(dst_syn_train, batch_size=args.batch_train, shuffle=True, num_workers=0)
-                
-                # NOTE the following loop is iterated for local model updates by SGD, 
-                # i.e., line 9 in Algorithm 1 the args.inner_loop controls number of SGD steps, 
-                # the number of args.inner_loop will be the number of local updates, 
-                # note that because number of sythetic data is small, however the batch size is large by default, e.g., 256
-                # so that one epoch may only have one SGD update using all the available synthetic data
-                for il in range(args.inner_loop):
-                    epoch('train', trainloader, net, optimizer_net, criterion, args, aug = False)
-                
-            # ends here
-                
-            # NOTE FOR WY: you may wish to modify the above loop to make it a federated version
-            # E.g., before the above loop, the net.parameters can be replaced by a aggregated version
-            # the aggregation can be calculated here after the above "outer loop", i.e., the loop over t
-            # <Place holder for model parameter aggregation>
-
-            loss_avg /= (num_classes*args.outer_loop)
-
-            if it%10 == 0:
-                print('%s iter = %04d, loss = %.4f' % (get_time(), it, loss_avg))
-
-            if it == args.Iteration: # only record the final results
-                data_save.append([copy.deepcopy(image_syn.detach().cpu()), copy.deepcopy(label_syn.detach().cpu())])
-                torch.save({'data': data_save, 'accs_all_exps': accs_all_exps, }, os.path.join(args.save_path, 'res_%s_%s_%s_%dipc.pt'%(args.method, args.dataset, args.model, args.ipc)))
+                '''Summary for client data condensation for this exp trial'''
+                client.loss_avg /= (client.num_classes*args.outer_loop)
+                if it%10 == 0:
+                    print('%s iter = %04d, loss = %.4f' % (get_time(), it, client.loss_avg))
+                if it == args.Iteration: # only record the final results
+                    data_save_all_clients[client.id].append([copy.deepcopy(client.image_syn.detach().cpu()), copy.deepcopy(client.label_syn.detach().cpu())])
+                    torch.save({'data': data_save_all_clients[client.id], 'accs_all_exps': accs_all_clients_all_exps[client.id], }, os.path.join(client.save_path, 'res_%s_%s_%s_%dipc.pt'%(client.args.method, client.args.dataset, client.args.model, client.args.ipc)))
 
 
     print('\n==================== Final Results ====================\n')
-    for key in model_eval_pool:
-        accs = accs_all_exps[key]
-        print('Run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
-
+    for i in range(args.num_clients):
+        for key in client.model_eval_pool:
+            accs = accs_all_clients_all_exps[i][key]
+            print('Client %d run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(i, args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
 
 
 if __name__ == '__main__':

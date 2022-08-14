@@ -48,13 +48,21 @@ def argparser():
     return args
 
 def main(args):
+    
+    ''' set seeds '''
+    if args.seed:
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        torch.cuda.manual_seed_all(args.seed)
+    rng = np.random.default_rng(args.seed)    
+    
+    ''' some global setup '''
     # if not os.path.exists(args.data_path):
     #     os.mkdir(args.data_path)
-
     if not os.path.exists(args.save_path):
         os.mkdir(args.save_path)
 
-    '''do some global settings'''
     # The list of iterations when we evaluate models and record results.
     # the defualt setting is to evaluate every 500 iterations, i.e., k=n*500
     # eval_it_pool = np.arange(0, args.Iteration+1, 500).tolist() if args.eval_mode == 'S' or args.eval_mode == 'SS' else [args.Iteration] 
@@ -62,14 +70,7 @@ def main(args):
     print('eval_it_pool: ', eval_it_pool)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
     data_set, data_info, testloader_server = data_preparation(args.dataset)
-    
-    if args.seed:
-        random.seed(args.seed)
-        np.random.seed(args.seed)
-        torch.manual_seed(args.seed)
-        torch.cuda.manual_seed_all(args.seed)
-    rng = np.random.default_rng(args.seed)
-    
+
     accs_all_clients_all_exps = [dict() for i in range(args.num_clients)]
     for i in range(args.num_clients):
         for key in model_eval_pool:
@@ -132,7 +133,7 @@ def main(args):
         client_data_train = make_client_dataset_from_partition(data_set['train_data'], args.num_clients, client_train_data_idcs)
         client_data_test = make_client_dataset_from_partition(data_set['test_data'], args.num_clients, client_test_data_idcs)
 
-        '''set the architecture for the model to be trained'''
+        '''set the architecture for the network to be trained'''
         net_train = get_network(args.model, data_info['channel'], data_info['num_classes'], data_info['img_size']).to(args.device)
 
         '''create clients and server'''
@@ -142,30 +143,26 @@ def main(args):
         server = ServerDC(args, net_train, clients)
         print('FL server created.')
 
+        ''' organize the real dataset and initialize the synthetic data '''
         for client in clients:
-            ''' organize the real dataset '''
             client.organize_local_real_data()
             for ch in range(client.channel):
                 print('real images channel %d, mean = %.4f, std = %.4f'%(ch, torch.mean(client.images_all[:, ch]), torch.std(client.images_all[:, ch])))
-            
-            ''' initialize the synthetic data '''
             client.syn_data_init()
 
         ''' training starts from here '''
         print('%s training begins'%get_time())
         
-        # NOTE this iteration is over the different model initializations, 
-        # i.e., the loop indixed by K in the paper, Algorithm 1 line 4
+        # NOTE this loop is over the different model initializations, i.e., the loop indixed by K in the paper, Algorithm 1 line 4
         for it in range(args.Iteration+1): 
             for client in clients:
                 ''' Evaluate synthetic data '''
                 client.syn_data_eval(exp, it)
 
-                ''' Train synthetic data '''
+                ''' set the optimizer for learning synthetic data '''
                 optimizer_net = client.net_trainer_setup(client.model_train)
 
-                # NOTE this outer_loop is not the loop over different model initialization
-                # this loop is indixed by T in the paper, Algorithm 1 line 4
+                # NOTE this loop is indixed by T in the paper, Algorithm 1 line 4
                 for ol in range(args.outer_loop): 
 
                     ''' freeze the running mu and sigma for BatchNorm layers '''
@@ -190,11 +187,11 @@ def main(args):
                     client.sync_with_server(server, method='state')
 
                     ''' update synthetic data '''
-                    client.syn_data_update(client.model_train, optimizer_net)
+                    client.syn_data_update(client.model_train)
 
                     ''' update network '''
-                    client.network_update(client.model_train, client.optimizer_net)
-                    client.local_model_state = copy.deepcopy(client.model_train.state_dict())
+                    client.network_update(client.model_train, optimizer_net) 
+                    client.local_model_state = copy.deepcopy(client.model_train.state_dict()) # copy the updated local model weights to another iterables to avoid any unaware modification
                     
                 '''Server perform model aggregation upon local network updates'''
                 server.net_weights_aggregation(clients)
@@ -216,6 +213,6 @@ def main(args):
 
 
 if __name__ == '__main__':
-    main()
+    main(args=argparser())
 
 

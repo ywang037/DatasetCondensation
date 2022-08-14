@@ -1,9 +1,10 @@
-# import random
+import os
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+from torchvision.utils import save_image
 import copy
 from utils.func_utils import evaluation
 
@@ -48,22 +49,17 @@ class ClientDC(object):
         self.label_syn = None
                 
         self.criterion = nn.CrossEntropyLoss().to(args.device)
-        
+        self.optimizer_img = torch.optim.SGD([self.image_syn, ], lr=self.args.lr_img, momentum=0.5) # optimizer for synthetic data
+        # optimizer_img.zero_grad()
+      
+        self.accs_all_exps = dict()
+        self.data_save=[]
+        self.save_path  = os.path.join(self.args.save_path, 'client_{}'.format(self.id))
+        self.loss_avg = 0
 
-
-    '''data initilization'''
-    # The list of iterations when we evaluate models and record results.
-    # the defualt setting is to evaluate every 500 iterations, i.e., k=n*500
-    def data_save_init(self):
-        # record performances of all experiments
-        accs_all_exps = dict() 
-        for key in self.model_eval_pool:
-            accs_all_exps[key] = []
-        data_save = []
-        return data_save
-
-    ''' organize the real dataset '''
+   
     def organize_local_real_data(self):
+        ''' organize the real dataset '''
         # images_all = []
         # labels_all = []
         # indices_class = [[] for c in range(self.num_classes)]
@@ -77,20 +73,14 @@ class ClientDC(object):
 
         for c in range(self.num_classes):
             print('class c = %d: %d real images'%(c, len(self.indices_class[c])))
+        return
 
     def get_images(self, c, n): # get random n images from class c
         idx_shuffle = np.random.permutation(self.indices_class[c])[:n]
         return self.images_all[idx_shuffle]
-
-    
-        # for ch in range(self.channel):
-        #     print('real images channel %d, mean = %.4f, std = %.4f'%(ch, torch.mean(images_all[:, ch]), torch.std(images_all[:, ch])))
-
-        # NOTE for WY: the following lines need to be executed for every client in Federated version, see codes between marks <STARTS FROM ... ENDS HERE>
-        # STARTS FROM HERE
-
-    ''' initialize the synthetic data '''
+   
     def syn_data_init(self):
+        ''' initialize the synthetic data '''
         self.image_syn = torch.randn(size=(self.num_classes*self.ipc, self.channel, self.im_size[0], self.im_size[1]), dtype=torch.float, requires_grad=True, device=self.device)
         self.label_syn = torch.tensor([np.ones(self.ipc)*i for i in range(self.num_classes)], dtype=torch.long, requires_grad=False, device=self.device).view(-1) # [0,0,0, 1,1,1, ..., 9,9,9]
 
@@ -102,15 +92,99 @@ class ClientDC(object):
             print('initialize synthetic data from random noise')
         return
 
-        # ''' training '''
-        # optimizer_img = torch.optim.SGD([self.image_syn, ], lr=self.args.lr_img, momentum=0.5) # optimizer_img for synthetic data
-        # optimizer_img.zero_grad()
-        # criterion = nn.CrossEntropyLoss().to(self.device)
-        # print('%s training begins'%get_time())
+    def syn_data_eval(self, exp, it):
+        ''' Evaluate synthetic data '''
+        if it in self.eval_it_pool:
+            for model_eval in self.model_eval_pool:
+                print('-------------------------\nEvaluation\nmodel_train = %s, model_eval = %s, iteration = %d'%(self.args.model, model_eval, it))
+                self.args.dc_aug_param = get_daparam(self.args.dataset, self.args.model, model_eval, self.args.ipc) # This augmentation parameter set is only for DC method. It will be muted when args.dsa is True.
+                print('DC augmentation parameters: \n', self.args.dc_aug_param)
+                self.args.epoch_eval_train = 300
 
+                accs = []
+                for it_eval in range(self.args.num_eval):
+                    # get a random model
+                    net_eval = get_network(model_eval, self.channel, self.num_classes, self.im_size).to(self.device) 
+                    
+                    # avoid any unaware modification
+                    image_syn_eval, label_syn_eval = copy.deepcopy(self.image_syn.detach()), copy.deepcopy(self.label_syn.detach()) 
+                    
+                    # trains new models using condensed/synthetic data then evaluate the accuracy of this resulting model
+                    _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, self.local_testloader, self.args)
+                    accs.append(acc_test)
+                print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
+
+                if it == self.args.Iteration: # record the final results
+                    self.accs_all_exps[model_eval] += accs
+
+            ''' visualize and save '''
+            save_name = os.path.join(self.save_path, 'vis_%s_%s_%s_%dipc_exp%d_iter%d.png'%(self.args.method, self.args.dataset, self.args.model, self.args.ipc, exp, it))
+            image_syn_vis = copy.deepcopy(self.image_syn.detach().cpu())
+            for ch in range(self.channel):
+                image_syn_vis[:, ch] = image_syn_vis[:, ch]  * self.data_info['std'][ch] + self.data_info['mean'][ch]
+            image_syn_vis[image_syn_vis<0] = 0.0
+            image_syn_vis[image_syn_vis>1] = 1.0
+            save_image(image_syn_vis, save_name, nrow=self.args.ipc) # Trying normalize = True/False may get better visual effects.
+        return
+
+    def net_trainer_setup(self, net):
+        ''' sample a network initialization and set the optimizer for the network
+        '''
+        # net = get_network(self.args.model, self.channel, self.num_classes, self.im_size).to(self.device) # get a random model, better to rename net to net_train
+        net.train()
+        optimizer_net = torch.optim.SGD(net.parameters(), lr=self.args.lr_net)  # optimizer_img for synthetic data
+        optimizer_net.zero_grad()
+        self.loss_avg = 0
+        self.args.dc_aug_param = None  # Mute the DC augmentation when learning synthetic data (in inner-loop epoch function) in oder to be consistent with DC paper.
+        return optimizer_net
+
+    def syn_data_update(self, net):
+        loss = torch.tensor(0.0).to(self.device)
+        
+        # NOTE this loop is over labels, i.e., line 5-8 in Algorithm 1
+        # NOTE that, the following synthetic data learning process is looped over only one batch of real data, i.e., one step of SGD for learning data, 
+        # in actual one can use multiple steps by looping the following sections, but one may need to use non-replace method to randomly draw real data, just like a data loader
+        # update only once but over K iterations equivalent to K steps of SGD for learning the data
+        for c in range(self.num_classes):
+            img_real = self.get_images(c, self.batch_size_learn_data)
+            lab_real = torch.ones((img_real.shape[0],), device=self.device, dtype=torch.long) * c
+            img_syn = self.image_syn[c*self.args.ipc:(c+1)*self.args.ipc].reshape((self.args.ipc, self.channel, self.im_size[0], self.im_size[1]))
+            lab_syn = torch.ones((self.args.ipc,), device=self.device, dtype=torch.long) * c
+
+            net_parameters = list(net.parameters())
+            output_real = self.model_train(img_real)
+            loss_real = self.criterion(output_real, lab_real)
+            gw_real = torch.autograd.grad(loss_real, net_parameters)
+            gw_real = list((_.detach().clone() for _ in gw_real))
+
+            output_syn = self.model_train(img_syn)
+            loss_syn = self.criterion(output_syn, lab_syn)
+            gw_syn = torch.autograd.grad(loss_syn, net_parameters, create_graph=True)
+
+            loss += match_loss(gw_syn, gw_real, self.args)
+
+        self.optimizer_img.zero_grad()
+        loss.backward()
+        self.optimizer_img.step()
+        self.loss_avg += loss.item()
+
+    def network_update(self, net, optimizer_net):
+        ''' update network '''
+        image_syn_train, label_syn_train = copy.deepcopy(self.image_syn.detach()), copy.deepcopy(self.label_syn.detach())          
+        dataset_syn_train = TensorDataset(image_syn_train, label_syn_train)
+        net_trainloader = torch.utils.data.DataLoader(dataset_syn_train, batch_size=self.batch_size_learn_model, shuffle=True, num_workers=0)
+        
+        # NOTE the following loop is iterated for local model updates by SGD, 
+        # i.e., line 9 in Algorithm 1 the args.inner_loop controls number of SGD steps, 
+        # the number of args.inner_loop will be the number of local updates, 
+        # note that because number of sythetic data is small, however the batch size is large by default, e.g., 256
+        # so that one epoch may only have one SGD update using all the available synthetic data
+        for il in range(self.args.inner_loop):
+            epoch('train', net_trainloader, net, optimizer_net, self.criterion, self.args, aug = False)
+            
 
     '''below are client functions for federated learning'''
-    def sync_with_server(self, server, method='weights'):
+    def sync_with_server(self, server, method='state'):
         """ receive/copy global model of last round to a local cache
             to be used for local training steps
         """
@@ -119,7 +193,6 @@ class ClientDC(object):
             copy_parameters(target=self.model_train.parameters(), source=server.global_model_weights)    
         elif method == 'state': # download the state of the global model
             self.model_train.load_state_dict(server.global_model_state)
-
 
     '''the following are copied from clientbase'''
     def init_model_test(self, model):

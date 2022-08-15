@@ -34,7 +34,7 @@ def argparser():
     parser.add_argument('--init', type=str, default='noise', help='noise/real: initialize synthetic images from random noise or randomly sampled real images.')
     parser.add_argument('--dsa_strategy', type=str, default='None', help='differentiable Siamese augmentation strategy')
     parser.add_argument('--data_path', type=str, default='data', help='dataset path')
-    parser.add_argument('--save_path', type=str, default='result', help='path to save results')
+    parser.add_argument('--save_root', type=str, default='result', help='path to save results')
     parser.add_argument('--dis_metric', type=str, default='ours', help='distance metric')
 
     # addon args
@@ -46,9 +46,12 @@ def argparser():
     args = parser.parse_args()
     args.outer_loop, args.inner_loop = 10, 10
     # args.outer_loop, args.inner_loop = get_loops(args.ipc)
-    args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     args.dsa_param = ParamDiffAug()
     args.dsa = False if args.dsa_strategy in ['none', 'None'] else True
+    
+    args.save_path = os.path.join(args.save_root, time.strftime('save_%y-%m-%d-%H-%M-%S')) 
+    args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    
     return args
 
 def main(args):

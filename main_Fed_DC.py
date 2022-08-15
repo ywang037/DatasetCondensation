@@ -216,7 +216,7 @@ def main(args):
 
         ''' Evaluate synthetic data trained in last iteration'''
         for client in clients:
-            client.syn_data_eval(exp, it)
+            client.syn_data_eval(exp, it, accs_all_clients_all_exps)
             client.loss_avg /= (client.num_classes*args.outer_loop) # Summary for client data condensation for this exp trial
             
             if it%10 == 0:

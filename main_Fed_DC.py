@@ -46,6 +46,8 @@ def argparser():
     args.outer_loop, args.inner_loop = 10, 10
     # args.outer_loop, args.inner_loop = get_loops(args.ipc)
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    args.dsa_param = ParamDiffAug()
+    args.dsa = False if args.dsa_strategy in ['none', 'None'] else True
     return args
 
 def main(args):

@@ -140,7 +140,7 @@ def main(args):
     net_train = get_network(args.model, data_info['channel'], data_info['num_classes'], data_info['img_size']).to(args.device)
 
     '''create clients and server'''
-    clients = [ClientDC(id, args, net_train, data_info, client_data_train[i], client_data_test[i], eval_it_pool, model_eval_pool) for i in range(args.num_clients)]
+    clients = [ClientDC(id, args, net_train, data_info, client_data_train[i], client_data_test[i], eval_it_pool, model_eval_pool) for id in range(args.num_clients)]
     for client in clients:
         print('Client {} has {} training samples {} testing samples'.format(client.id, client.num_local_data_train, client.num_local_data_test))
     server = ServerDC(args, net_train, clients)

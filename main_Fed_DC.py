@@ -236,6 +236,14 @@ def main(args):
 
 
 if __name__ == '__main__':
+    time_start = time.time()
+    
     main(args=argparser())
-
+    
+    time_end = time.time()
+    sesseion_time = np.around((time_end-time_start)/3600, 2)
+    print('Session time: {} hrs. That\'s all folks.'.format(sesseion_time))
+    time_end_stamp = time.strftime('%Y-%m-%d %H:%M:%S')
+    # time_end_stamp = time.strftime('%y-%m-%d-%H-%M-%S')
+    print(f'Session completed at {time_end_stamp}')
 

@@ -90,7 +90,7 @@ class ClientDC(object):
             print('initialize synthetic data from random noise')
         return
 
-    def syn_data_eval(self, exp, it):
+    def syn_data_eval(self, exp, it, accs_all_clients_all_exps):
         ''' Evaluate synthetic data '''
         if it in self.eval_it_pool:
             for model_eval in self.model_eval_pool:
@@ -113,7 +113,7 @@ class ClientDC(object):
                 print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
 
                 if it == self.args.Iteration: # record the final results
-                    self.accs_all_exps[model_eval] += accs
+                    accs_all_clients_all_exps[self.id][model_eval] += accs
 
             ''' visualize and save '''
             save_name = os.path.join(self.save_path, 'vis_%s_%s_%s_%dipc_exp%d_iter%d.png'%(self.args.method, self.args.dataset, self.args.model, self.args.ipc, exp, it))

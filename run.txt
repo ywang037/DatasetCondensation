@@ -1,0 +1,1 @@
+python main.py --dataset=CIFAR10 --model=ConvNet --ipc=1 --num_exp=1 --num_eval=5 --epoch_eval_train=50 --Iteration=100

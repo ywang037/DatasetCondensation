@@ -218,6 +218,9 @@ def main(args):
         for client in clients:
             client.syn_data_eval(exp, it, accs_all_clients_all_exps)
             client.loss_avg /= (client.num_classes*args.outer_loop) # Summary for client data condensation for this exp trial
+
+            if not os.path.exists(client.save_path):
+                os.mkdir(client.save_path)
             
             if it%10 == 0:
                 print('%s iter = %04d, loss = %.4f' % (get_time(), it, client.loss_avg))

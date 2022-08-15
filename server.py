@@ -49,6 +49,28 @@ class ServerDC(object):
         """
         for server_param, client_param in zip(model, client.get_parameters()):
             server_param.data += client_param.data.clone() * ratio
+   
+    def net_weights_aggregation(self, selected_clients):
+        self.global_model_state = self.add_net_state(clients=selected_clients)
+        self.global_model.load_state_dict(self.global_model_state)
+        copy_parameters(target=self.global_model_weights, source=self.global_model.parameters())
+
+    
+    def add_net_state(self, clients):
+        """ an alternative way of computing model aggregation
+            the same as standard FedAvg code library
+        """
+        n_train_list = [client.num_local_data_train for client in clients]
+        ratio = [n/sum(n_train_list) for n in n_train_list]
+        w_list = [client.local_model_state for client in clients]
+        w_avg = w_list[0]
+        for i, w in enumerate(w_list):
+            for key in w.keys():
+                if i==0:
+                    w_avg[key] = ratio[i]*w[key]
+                else:    
+                    w_avg[key]+=ratio[i]*w[key]
+        return w_avg
 
     # def model_aggregation(self, fed_model, clients):
     #     """ WARNING: this method has been deprecated.
@@ -75,27 +97,3 @@ class ServerDC(object):
     #         # self.add_parameters(fed_model, client, ratio)
     #         for server_param, client_param in zip(fed_model, client.get_parameters()):
     #             server_param.data += client_param.data.clone() * ratio
-    
-    def net_weights_aggregation(self, selected_clients):
-        self.global_model_state = self.add_net_state(clients=selected_clients)
-        self.global_model.load_state_dict(self.global_model_state)
-        copy_parameters(target=self.global_model_weights, source=self.global_model.parameters())
-
-    
-    def add_net_state(self, clients):
-        """ an alternative way of computing model aggregation
-            the same as standard FedAvg code library
-        """
-        n_train_list = [client.num_local_data_train for client in clients]
-        ratio = [n/sum(n_train_list) for n in n_train_list]
-        w_list = [client.local_model_state for client in clients]
-        w_avg = w_list[0]
-        for i, w in enumerate(w_list):
-            for key in w.keys():
-                if i==0:
-                    w_avg[key] = ratio[i]*w[key]
-                else:    
-                    w_avg[key]+=ratio[i]*w[key]
-        return w_avg
-
-    

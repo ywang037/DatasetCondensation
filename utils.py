@@ -1,5 +1,6 @@
 import time
 import os
+import sys
 import numpy as np
 import torch
 import torch.nn as nn
@@ -32,7 +33,7 @@ class CustomSubset(Subset):
 def data_preparation(dataset):
     data_set, data_info = {}, {}
     # num_classes=10
-    if dataset == 'mnist':
+    if dataset == 'MNIST':
         channel = 1
         im_size = (28, 28)
         num_classes = 10
@@ -47,7 +48,7 @@ def data_preparation(dataset):
         mapp = np.array(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], dtype='<U1')
         # cnn = ConvNet(n_class=num_classes)
 
-    elif dataset == 'cifar10':
+    elif dataset == 'CIFAR10':
         import ssl
         ssl._create_default_https_context = ssl._create_unverified_context
         channel = 3
@@ -65,7 +66,7 @@ def data_preparation(dataset):
         # cnn = CNNCifarTorch()
 
     else:
-        exit('unknown dataset: %s'%dataset)
+        sys.exit('unknown dataset: %s'%dataset)
 
     data_set['train_data']=data_train
     data_set['test_data']=data_test

@@ -187,7 +187,7 @@ def main(args):
                     client.sync_with_server(server, method='state')
 
                     ''' update synthetic data '''
-                    client.syn_data_update(client.model_train)
+                    client.syn_data_update(client.model_train) # one step of SGD, can be repeated for multiple steps
 
                     ''' update network '''
                     client.network_update(client.model_train, optimizer_net) 
@@ -207,7 +207,7 @@ def main(args):
 
     print('\n==================== Final Results ====================\n')
     for i in range(args.num_clients):
-        for key in client.model_eval_pool:
+        for key in model_eval_pool:
             accs = accs_all_clients_all_exps[i][key]
             print('Client %d run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(i, args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
 

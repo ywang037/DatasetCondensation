@@ -153,7 +153,7 @@ def main(args):
         clients = [ClientDC(id, args, net_train, data_info, client_data_train[i], client_data_test[i], eval_it_pool, model_eval_pool) for id in range(args.num_clients)]
         for client in clients:
             print('Client {} has {} training samples {} testing samples'.format(client.id, client.num_local_data_train, client.num_local_data_test))
-        server = ServerDC(args, net_train, clients)
+        server = ServerDC(args, net_train, clients, data_info)
         print('FL server created.')
 
         ''' organize the real dataset and initialize the synthetic data '''

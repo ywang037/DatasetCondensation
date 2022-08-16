@@ -176,8 +176,8 @@ class ClientDC(object):
 
     def network_update(self, net, optimizer_net, server=None):
         ''' update network '''
-        if server is not None:
-            # use server aggregated syn data
+        if (server is not None) and (not self.args.stand_alone):
+            # in federated mode and use server aggregated syn data
             # assume all clients share common labels
             image_syn_train, label_syn_train = copy.deepcopy(server.image_syn_agg.detach()), copy.deepcopy(self.label_syn.detach())
         else:

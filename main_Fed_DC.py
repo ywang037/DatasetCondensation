@@ -239,7 +239,7 @@ def main(args):
             accs = accs_all_clients_all_exps[i][key]
             print('Client %d run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(i, args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
             acc_overall += accs
-        print('Average performance after {:d} experiments, evaluted on {:2d} random {}, mean = {:.2f%%} std = {:.2%%f}\n-------------------------'.format(args.num_exp, len(acc_overall), np.mean(acc_overall)*100, np.std(accs)*100))
+        print('\n-------------------------\nAverage performance after {:d} experiments, evaluted on {:2d} random {}, mean = {:.2f}%, std = {:.2f}%'.format(args.num_exp, len(acc_overall), np.mean(acc_overall)*100, np.std(accs)*100))
 
 
 if __name__ == '__main__':

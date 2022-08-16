@@ -50,7 +50,7 @@ def argparser():
     args.dsa_param = ParamDiffAug()
     args.dsa = False if args.dsa_strategy in ['none', 'None'] else True
     
-    args.save_path = os.path.join(args.save_root, time.strftime('save_%y-%m-%d-%H-%M-%S')) 
+    args.save_path = os.path.join(args.save_root, args.dataset + time.strftime('_%y-%m-%d-%H-%M-%S')) 
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     return args

@@ -191,8 +191,6 @@ def main(args):
             # this loop resembles the communication round in FL
             for ol in range(args.outer_loop): 
                 
-
-
                 for client in clients:
                     if not args.stand_alone:
                         ''' fetch server model weights '''

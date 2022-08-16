@@ -42,6 +42,7 @@ def argparser():
     parser.add_argument('--seed', type=int, default=3, help='set a seed for reproducability, set to 0 to activate randomness')
     parser.add_argument('--client_alpha', type=float, default=100.0, help='dirichlet alpha for intra-cluster non-iid degree')
     parser.add_argument('--stand_alone', action='store_true', default=False, help='trigger non-federated local training mode')
+    parser.add_argument('--save_results', action='store_true', default=False, help='use this to save trained synthetic data and images')
 
     args = parser.parse_args()
     args.outer_loop, args.inner_loop = 10, 10
@@ -228,7 +229,7 @@ def main(args):
                 
                 if it%10 == 0:
                     print('%s iter = %04d, loss = %.4f' % (get_time(), it, client.loss_avg))
-                if it == args.Iteration: # only record the final results
+                if it == args.Iteration and args.save_results: # only record the final results
                     data_save_all_clients[client.id].append([copy.deepcopy(client.image_syn.detach().cpu()), copy.deepcopy(client.label_syn.detach().cpu())])
                     torch.save({'data': data_save_all_clients[client.id], 'accs_all_exps': accs_all_clients_all_exps[client.id], }, os.path.join(client.save_path, 'res_%s_%s_%s_%dipc.pt'%(client.args.method, client.args.dataset, client.args.model, client.args.ipc)))
 

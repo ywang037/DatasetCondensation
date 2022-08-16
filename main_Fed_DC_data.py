@@ -191,9 +191,7 @@ def main(args):
             # this loop resembles the communication round in FL
             for ol in range(args.outer_loop): 
                 
-                if not args.stand_alone:
-                    '''Server perform model aggregation upon local network updates'''
-                    server.net_weights_aggregation(clients)
+
 
                 for client in clients:
                     if not args.stand_alone:
@@ -222,7 +220,12 @@ def main(args):
                     # one step of SGD, can be repeated for multiple steps
                     # update only once but over T iterations equivalent to T steps of SGD for learning the data
                     client.syn_data_update(client.model_train) 
+                
+                if not args.stand_alone:
+                    ''' Server perform syndata data aggregation '''
+                    server.syn_data_aggregation(clients)
 
+                for client in clients:
                     ''' update network '''
                     client.network_update(client.model_train, optimizer_net) 
                     client.local_model_state = copy.deepcopy(client.model_train.state_dict()) # copy the updated local model weights to another iterables to avoid any unaware modification   

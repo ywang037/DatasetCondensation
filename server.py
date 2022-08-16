@@ -18,7 +18,7 @@ class ServerDC(object):
         self.num_classes = data_info['num_classes']
         self.channel = data_info['channel']
         self.im_size = data_info['img_size']
-        self.image_syn, self.label_syn = self.server_syn_init()
+        self.image_syn_agg = self.server_syn_data_init()
         
         self.global_model = copy.deepcopy(net_train).to(self.device)
         self.global_model_weights = copy.deepcopy(list(self.global_model.parameters()))
@@ -43,17 +43,25 @@ class ServerDC(object):
     #         self.selected_clients = random.sample(clients, int(len(clients)*frac))
     #         # return random.sample(clients, int(len(clients)*frac)) 
 
-    def server_syn_init(self):
-        image_syn_init = torch.zeros(size=(self.num_classes*self.ipc, self.channel, self.im_size[0], self.im_size[1]), dtype=torch.float, requires_grad=True, device=self.device)
-        label_syn_init = torch.tensor([np.ones(self.ipc)*i for i in range(self.num_classes)], dtype=torch.long, requires_grad=False, device=self.device).view(-1) # [0,0,0, 1,1,1, ..., 9,9,9]
-        return image_syn_init, label_syn_init
+    def server_syn_data_init(self):
+        ''' assumes that all clients have the same labels 
+        '''
+        image_syn_init = torch.zeros(size=(self.num_classes*self.ipc, self.channel, self.im_size[0], self.im_size[1]), dtype=torch.float, requires_grad=False, device=self.device)
+        return image_syn_init
+        # label_syn_init = torch.tensor([np.ones(self.ipc)*i for i in range(self.num_classes)], dtype=torch.long, requires_grad=False, device='cpu').view(-1) # [0,0,0, 1,1,1, ..., 9,9,9]
+        # return image_syn_init, label_syn_init
 
     def syn_data_aggregation(self, clients):
-        image_syn, _ = self.server_syn_init()
+        ''' assumes that all clients have the same labels, so that sever directly average over all the uploaded client syn data
+        '''
+        image_syn = self.server_syn_data_init() # reset the aggregated syn data to zeros
         n_train_list = [client.num_local_data_train for client in clients]
         ratio = [n/sum(n_train_list) for n in n_train_list]
-        for id in range(len(clients)):
-            image_syn += clients[id].image_syn * ratio[id]
+        for client in clients:
+            client_syn_data = copy.deepcopy(client.image_syn.detach())
+            image_syn += client_syn_data * ratio[client.id]
+        self.image_syn_agg = copy.deepcopy(image_syn.detach())
+        return
         
    
     def net_weights_aggregation(self, selected_clients):

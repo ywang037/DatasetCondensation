@@ -179,7 +179,7 @@ class ClientDC(object):
         if server is not None:
             # use server aggregated syn data
             # assume all clients share common labels
-            image_syn_train, label_syn_train = copy.deepcopy(server.image_syn.detach()), copy.deepcopy(self.label_syn.detach())
+            image_syn_train, label_syn_train = copy.deepcopy(server.image_syn_agg.detach()), copy.deepcopy(self.label_syn.detach())
         else:
             # use own syn data
             image_syn_train, label_syn_train = copy.deepcopy(self.image_syn.detach()), copy.deepcopy(self.label_syn.detach())          

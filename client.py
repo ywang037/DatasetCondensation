@@ -116,13 +116,14 @@ class ClientDC(object):
                     accs_all_clients_all_exps[self.id][model_eval] += accs
 
             ''' visualize and save '''
-            save_name = os.path.join(self.save_path, 'vis_%s_%s_%s_%dipc_exp%d_iter%d.png'%(self.args.method, self.args.dataset, self.args.model, self.args.ipc, exp, it))
-            image_syn_vis = copy.deepcopy(self.image_syn.detach().cpu())
-            for ch in range(self.channel):
-                image_syn_vis[:, ch] = image_syn_vis[:, ch]  * self.data_info['std'][ch] + self.data_info['mean'][ch]
-            image_syn_vis[image_syn_vis<0] = 0.0
-            image_syn_vis[image_syn_vis>1] = 1.0
-            save_image(image_syn_vis, save_name, nrow=self.args.ipc) # Trying normalize = True/False may get better visual effects.
+            if self.args.save_results:
+                save_name = os.path.join(self.save_path, 'vis_%s_%s_%s_%dipc_exp%d_iter%d.png'%(self.args.method, self.args.dataset, self.args.model, self.args.ipc, exp, it))
+                image_syn_vis = copy.deepcopy(self.image_syn.detach().cpu())
+                for ch in range(self.channel):
+                    image_syn_vis[:, ch] = image_syn_vis[:, ch]  * self.data_info['std'][ch] + self.data_info['mean'][ch]
+                image_syn_vis[image_syn_vis<0] = 0.0
+                image_syn_vis[image_syn_vis>1] = 1.0
+                save_image(image_syn_vis, save_name, nrow=self.args.ipc) # Trying normalize = True/False may get better visual effects.
         return
 
     def data_trainer_setup(self):

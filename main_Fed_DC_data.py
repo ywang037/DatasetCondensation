@@ -226,8 +226,8 @@ def main(args):
                     server.syn_data_aggregation(clients)
 
                 for client in clients:
-                    ''' update network '''
-                    client.network_update(client.model_train, optimizer_net) 
+                    ''' update network using server aggregated syn data'''
+                    client.network_update(client.model_train, optimizer_net, server) 
                     client.local_model_state = copy.deepcopy(client.model_train.state_dict()) # copy the updated local model weights to another iterables to avoid any unaware modification   
 
             ''' Evaluate synthetic data trained in last iteration'''

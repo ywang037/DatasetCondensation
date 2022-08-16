@@ -174,9 +174,15 @@ class ClientDC(object):
         self.optimizer_img.step()
         self.loss_avg += loss.item()
 
-    def network_update(self, net, optimizer_net):
+    def network_update(self, net, optimizer_net, server=None):
         ''' update network '''
-        image_syn_train, label_syn_train = copy.deepcopy(self.image_syn.detach()), copy.deepcopy(self.label_syn.detach())          
+        if server is not None:
+            # use server aggregated syn data
+            # assume all clients share common labels
+            image_syn_train, label_syn_train = copy.deepcopy(server.image_syn.detach()), copy.deepcopy(self.label_syn.detach())
+        else:
+            # use own syn data
+            image_syn_train, label_syn_train = copy.deepcopy(self.image_syn.detach()), copy.deepcopy(self.label_syn.detach())          
         dataset_syn_train = TensorDataset(image_syn_train, label_syn_train)
         net_trainloader = torch.utils.data.DataLoader(dataset_syn_train, batch_size=self.batch_size_learn_model, shuffle=True, num_workers=0)
         

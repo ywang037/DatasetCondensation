@@ -190,12 +190,15 @@ def main(args):
             # NOTE this loop is indixed by T in the paper, Algorithm 1 line 4
             # this loop resembles the communication round in FL
             for ol in range(args.outer_loop): 
-                '''Server perform model aggregation upon local network updates'''
-                server.net_weights_aggregation(clients)
+                
+                if not args.stand_alone:
+                    '''Server perform model aggregation upon local network updates'''
+                    server.net_weights_aggregation(clients)
 
                 for client in clients:
-                    ''' fetch server model weights '''
-                    client.sync_with_server(server, method='state')
+                    if not args.stand_alone:
+                        ''' fetch server model weights '''
+                        client.sync_with_server(server, method='state')
 
                     ''' freeze the running mu and sigma for BatchNorm layers '''
                     # Synthetic data batch, e.g. only 1 image/batch, is too small to obtain stable mu and sigma.

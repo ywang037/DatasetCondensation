@@ -1,5 +1,5 @@
 # import os
-import imp
+import numpy as np
 import random
 import copy
 import torch
@@ -9,46 +9,52 @@ from utils import copy_parameters
 # from sklearn.cluster import AgglomerativeClustering, SpectralClustering
 
 class ServerDC(object):
-    def __init__(self, args, net_train, clients):
+    def __init__(self, args, net_train, clients, data_info):
 
         # Set up the main attributes
+        self.args = args
         self.device = args.device
+        self.data_info = data_info
+        self.num_classes = data_info['num_classes']
+        self.channel = data_info['channel']
+        self.im_size = data_info['img_size']
+        self.image_syn, self.label_syn = self.server_syn_init()
+        
         self.global_model = copy.deepcopy(net_train).to(self.device)
         self.global_model_weights = copy.deepcopy(list(self.global_model.parameters()))
         self.global_model_state = copy.deepcopy(self.global_model.state_dict())
         self.clients = clients
-        self.selected_clients = []
+        # self.selected_clients = []
 
-    def select_clients(self, clients, frac=1.0):
-        '''selects clients from possible_clients
-        Args:
-            clients: number of client objectes to select
+    # def select_clients(self, clients, frac=1.0):
+    #     '''selects clients from possible_clients
+    #     Args:
+    #         clients: number of client objectes to select
         
-        Return:
-            list of selected clients objects
-        '''
+    #     Return:
+    #         list of selected clients objects
+    #     '''
         
-        if frac == 1.0:
-            print("All users are selected")
-            self.selected_clients = self.clients
-            # return self.clients
-        else:
-            self.selected_clients = random.sample(clients, int(len(clients)*frac))
-            # return random.sample(clients, int(len(clients)*frac)) 
+    #     if frac == 1.0:
+    #         print("All users are selected")
+    #         self.selected_clients = self.clients
+    #         # return self.clients
+    #     else:
+    #         self.selected_clients = random.sample(clients, int(len(clients)*frac))
+    #         # return random.sample(clients, int(len(clients)*frac)) 
 
-    def push_model_to_clients(self, clients):
-        """ send global model parameters to a client's local cache
-            to be used before local training steps
-        """
-        for client in clients:
-            copy_parameters(target=client.model_train.parameters(), source=self.global_model_param)    
+    def server_syn_init(self):
+        image_syn_init = torch.zeros(size=(self.num_classes*self.ipc, self.channel, self.im_size[0], self.im_size[1]), dtype=torch.float, requires_grad=True, device=self.device)
+        label_syn_init = torch.tensor([np.ones(self.ipc)*i for i in range(self.num_classes)], dtype=torch.long, requires_grad=False, device=self.device).view(-1) # [0,0,0, 1,1,1, ..., 9,9,9]
+        return image_syn_init, label_syn_init
 
-    def add_parameters(self, model, client, ratio):
-        """used for model aggregation, adding a client's model parameter scaled by ratio to
-            the corresponding parameters in the input model
-        """
-        for server_param, client_param in zip(model, client.get_parameters()):
-            server_param.data += client_param.data.clone() * ratio
+    def syn_data_aggregation(self, clients):
+        image_syn, _ = self.server_syn_init()
+        n_train_list = [client.num_local_data_train for client in clients]
+        ratio = [n/sum(n_train_list) for n in n_train_list]
+        for id in range(len(clients)):
+            image_syn += clients[id].image_syn * ratio[id]
+        
    
     def net_weights_aggregation(self, selected_clients):
         self.global_model_state = self.add_net_state(clients=selected_clients)
@@ -71,6 +77,21 @@ class ServerDC(object):
                 else:    
                     w_avg[key]+=ratio[i]*w[key]
         return w_avg
+
+
+    def push_model_to_clients(self, clients):
+        """ send global model parameters to a client's local cache
+            to be used before local training steps
+        """
+        for client in clients:
+            copy_parameters(target=client.model_train.parameters(), source=self.global_model_param)    
+
+    def add_parameters(self, model, client, ratio):
+        """used for model aggregation, adding a client's model parameter scaled by ratio to
+            the corresponding parameters in the input model
+        """
+        for server_param, client_param in zip(model, client.get_parameters()):
+            server_param.data += client_param.data.clone() * ratio
 
     # def model_aggregation(self, fed_model, clients):
     #     """ WARNING: this method has been deprecated.

@@ -51,8 +51,8 @@ class ClientDC(object):
         # optimizer_img.zero_grad()
       
         self.accs_all_exps = dict()
-        self.data_save=[]
-        self.save_path  = os.path.join(self.args.save_path, 'client_{}'.format(self.id))
+        self.data_save =[]
+        self.save_path = os.path.join(self.args.save_path, 'client_{}'.format(self.id))
         self.loss_avg = 0
 
    

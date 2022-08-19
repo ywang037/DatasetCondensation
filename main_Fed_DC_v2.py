@@ -207,17 +207,17 @@ def main(args):
 
                 # fetch newly intialized server model weights '''
                 client.sync_with_server(server, method='state')
-                print('{} Client {} synced initial model with server.'.format(get_time()))
+                print('{} Client {} synced initial model with server.'.format(get_time(), client.id))
 
                 # set the optimizer for learning synthetic data '''
                 optimizer_net = client.net_trainer_setup(client.model_train)
-                print('{} Client {} model optimizer set.'.format(get_time()))
+                print('{} Client {} model optimizer set.'.format(get_time(), client.id))
 
 
             # NOTE this loop is indixed by T in the paper, Algorithm 1 line 4
             # this loop resembles the communication round in FL
             for ol in range(args.rounds): 
-                print('{} {d}-th round started.'.format(get_time(),ol))
+                print('{} {}-th round started.'.format(get_time(),ol))
 
                 # clients perform local update of data and network '''
                 for client in clients:

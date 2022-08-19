@@ -35,8 +35,8 @@ class ClientDC(object):
         self.local_data_test = data_test
         self.num_local_data_train = len(self.local_data_train)
         self.num_local_data_test = len(self.local_data_test)
-        self.batch_size_learn_data = args.batch_real
-        self.batch_size_learn_model = args.batch_train
+        self.batch_size_learn_data = args.client_batch_train_data
+        self.batch_size_learn_model = args.client_batch_train_model
         # self.trainloader = DataLoader(self.local_data_train, batch_size=self.batch_size, shuffle=True)
         self.local_testloader = DataLoader(self.local_data_test, batch_size=256, shuffle=False)        
         

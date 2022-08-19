@@ -24,8 +24,8 @@ def argparser():
 
     # default args - condensation
     parser.add_argument('--method', type=str, default='DC', help='DC/DSA')
-    parser.add_argument('--init', type=str, default='noise', help='noise/real: initialize synthetic images from random noise or randomly sampled real images.')
     parser.add_argument('--dsa_strategy', type=str, default='None', help='differentiable Siamese augmentation strategy')  
+    parser.add_argument('--init', type=str, default='noise', help='noise/real: initialize synthetic images from random noise or randomly sampled real images.')
     parser.add_argument('--ipc', type=int, default=1, help='image(s) per class')
     parser.add_argument('--dis_metric', type=str, default='ours', help='distance metric for gradient matching')
     parser.add_argument('--lr_img', type=float, default=0.1, help='learning rate for updating synthetic images')
@@ -33,17 +33,17 @@ def argparser():
 
     # default args - evluation
     parser.add_argument('--eval_mode', type=str, default='S', help='eval_mode') # S: the same to training model, M: multi architectures,  W: net width, D: net depth, A: activation function, P: pooling layer, N: normalization layer,
-    parser.add_argument('--num_eval', type=int, default=20, help='the number of evaluating randomly initialized models')
-    parser.add_argument('--epoch_eval_train', type=int, default=300, help='[for evaluation] epochs to train a model with synthetic data')
+    parser.add_argument('--num_eval', type=int, default=20, help='the number randomly initialized models for evaluating the syn data')
+    parser.add_argument('--epoch_eval_train', type=int, default=300, help='epochs to train a model with synthetic data for evaluating the syn data')
 
     # default args - experiments
-    parser.add_argument('--num_exp', type=int, default=5, help='the number of experiments')  
-    parser.add_argument('--Iteration', type=int, default=1000, help='training iterations')
+    parser.add_argument('--num_exp', type=int, default=5, help='the number of experiment runs')  
+    parser.add_argument('--Iteration', type=int, default=1000, help='the number of model intializations to be used, i.e., big K in the paper gradient matching')
 
     # args - fed/overall
-    parser.add_argument('--num_clients', type=int, default=5, help='number of clients')
     parser.add_argument('--seed', type=int, default=3, help='set a seed for reproducability, set to 0 to activate randomness')
-    parser.add_argument('--client_alpha', type=float, default=100.0, help='dirichlet alpha for intra-cluster non-iid degree')
+    parser.add_argument('--num_clients', type=int, default=5, help='number of clients')
+    parser.add_argument('--client_alpha', type=float, default=100.0, help='dirichlet alpha that controls the non-iid degree')
     
     # args - fed/server
     parser.add_argument('--stand_alone', action='store_true', default=False, help='trigger non-federated local training mode')
@@ -60,13 +60,7 @@ def argparser():
     parser.add_argument('--client_epoch_train', type=int, default=10, help='epochs to train the local model with synthetic data')
 
     parser.add_argument('--save_root', type=str, default='result', help='path to save results')
-
     args = parser.parse_args()
-    # args.outer_loop, args.inner_loop = 10, 10
-    # args.outer_loop, args.inner_loop = get_loops(args.ipc)
-    args.dsa_param = ParamDiffAug()
-    args.dsa = False if args.dsa_strategy in ['none', 'None'] else True
-    args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     if args.stand_alone:
         save_tag = args.dataset + '_local' + time.strftime('_%y-%m-%d-%H-%M-%S') 
@@ -75,7 +69,14 @@ def argparser():
     elif args.server_mode == 'train': # use model training mode
         save_tag = args.dataset + '_fed_train' + time.strftime('_%y-%m-%d-%H-%M-%S') 
     args.save_path = os.path.join(args.save_root, save_tag) 
-    
+
+    # the following are original arguments better to be kept unchanged
+    # args.outer_loop, args.inner_loop = 10, 10
+    # args.outer_loop, args.inner_loop = get_loops(args.ipc)
+    args.dsa_param = ParamDiffAug()
+    args.dsa = False if args.dsa_strategy in ['none', 'None'] else True
+    args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+   
     return args
 
 def main(args):

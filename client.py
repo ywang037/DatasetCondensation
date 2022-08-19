@@ -48,12 +48,17 @@ class ClientDC(object):
                 
         self.criterion = nn.CrossEntropyLoss().to(args.device)
         self.optimizer_img = None
+        self.optimizer_net = None
         # optimizer_img.zero_grad()
       
         self.accs_all_exps = dict()
         self.data_save =[]
         self.save_path = os.path.join(self.args.save_path, 'client_{}'.format(self.id))
         self.loss_avg = 0
+
+        self.lr_net_eval_train = args.lr_net_eval_train
+        self.epoch_eval_train = args.client_epoch_eval_train
+        self.batch_size_eval_train = args.client_batch_eval_train
 
    
     def organize_local_real_data(self):
@@ -91,7 +96,8 @@ class ClientDC(object):
         return
 
     def syn_data_eval(self, exp, it, accs_all_clients_all_exps):
-        ''' Evaluate synthetic data '''
+        ''' Evaluate synthetic data for specific iterations
+        '''
         if it in self.eval_it_pool:
             for model_eval in self.model_eval_pool:
                 print('-------------------------\n{} Client {} evaluation\nmodel_train = {}, model_eval = {}, iteration = {}'.format(get_time(), self.id, self.args.model, model_eval, it))
@@ -126,6 +132,43 @@ class ClientDC(object):
                 save_image(image_syn_vis, save_name, nrow=self.args.ipc) # Trying normalize = True/False may get better visual effects.
         return
 
+    def syn_data_eval_final(self, exp, accs_all_clients_all_exps, args):
+        ''' Evaluate synthetic data after training is done
+        '''
+        
+        for model_eval in self.model_eval_pool:
+            print('-------------------------\n{} Client {} evaluation\nmodel_train = {}, model_eval = {}'.format(get_time(), self.id, self.args.model, model_eval))
+            self.args.dc_aug_param = get_daparam(self.args.dataset, self.args.model, model_eval, self.args.ipc) # This augmentation parameter set is only for DC method. It will be muted when args.dsa is True.
+            # print('DC augmentation parameters: \n', self.args.dc_aug_param)
+            # self.args.epoch_eval_train = 300
+
+            accs = []
+            for it_eval in range(self.args.num_eval):
+                # get a random model
+                net_eval = get_network(model_eval, self.channel, self.num_classes, self.im_size).to(self.device) 
+                
+                # avoid any unaware modification
+                image_syn_eval, label_syn_eval = copy.deepcopy(self.image_syn.detach()), copy.deepcopy(self.label_syn.detach()) 
+                
+                # trains new models using condensed/synthetic data then evaluate the accuracy of this resulting model
+                _, loss_test, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, self.local_testloader, self.lr_net_eval_train, self.epoch_eval_train, self.batch_size_eval_train, args)
+                accs.append(acc_test)
+            print('{} Client {} evaluated %d random %s, mean accuracy = %.4f std = %.4f\n-------------------------'%(get_time(), self.id, len(accs), model_eval, np.mean(accs), np.std(accs)))
+
+            # record the final results
+            accs_all_clients_all_exps[self.id][model_eval] += accs
+
+        # visualize and save the synthtic data (of each client)
+        if self.args.save_results:
+            save_name = os.path.join(self.save_path, 'vis_%s_%s_%s_%dipc_exp%d_final.png'%(self.args.method, self.args.dataset, self.args.model, self.args.ipc, exp))
+            image_syn_vis = copy.deepcopy(self.image_syn.detach().cpu())
+            for ch in range(self.channel):
+                image_syn_vis[:, ch] = image_syn_vis[:, ch]  * self.data_info['std'][ch] + self.data_info['mean'][ch]
+            image_syn_vis[image_syn_vis<0] = 0.0
+            image_syn_vis[image_syn_vis>1] = 1.0
+            save_image(image_syn_vis, save_name, nrow=self.args.ipc) # Trying normalize = True/False may get better visual effects.
+        return
+
     def data_trainer_setup(self):
         ''' to setup the optimizer for the synthetic data, 
             to be called after synthetic data initialization
@@ -136,12 +179,13 @@ class ClientDC(object):
         ''' sample a network initialization and set the optimizer for the network
         '''
         # net = get_network(self.args.model, self.channel, self.num_classes, self.im_size).to(self.device) # get a random model, better to rename net to net_train
-        net.train()
-        optimizer_net = torch.optim.SGD(net.parameters(), lr=self.args.lr_net)  # optimizer_img for synthetic data
-        optimizer_net.zero_grad()
+        # net.train()
+        # optimizer_net = torch.optim.SGD(net.parameters(), lr=self.args.lr_net)  # optimizer_img for synthetic data
+        # optimizer_net.zero_grad()
+        self.optimizer_net = torch.optim.SGD(net.parameters(), lr=self.args.lr_net)  # optimizer_img for synthetic data
         self.loss_avg = 0
         self.args.dc_aug_param = None  # Mute the DC augmentation when learning synthetic data (in inner-loop epoch function) in oder to be consistent with DC paper.
-        return optimizer_net
+        # return optimizer_net
 
     def syn_data_update(self, net):
         # NOTE this loop is over labels, i.e., line 5-8 in Algorithm 1

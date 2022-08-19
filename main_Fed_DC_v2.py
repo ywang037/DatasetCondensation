@@ -93,7 +93,7 @@ def main(args):
     # some global setup
     # if not os.path.exists(args.data_path):
     #     os.mkdir(args.data_path)
-    if not os.path.exists(args.save_path):
+    if not os.path.exists(args.save_path) and args.save_results:
         os.mkdir(args.save_path)
 
     # The list of iterations when we evaluate models and record results.
@@ -173,7 +173,7 @@ def main(args):
         # create clients and server
         clients = [ClientDC(id, args, net_train, data_info, client_data_train[i], client_data_test[i], eval_it_pool, model_eval_pool) for id in range(args.num_clients)]
         for client in clients:
-            if not os.path.exists(client.save_path):
+            if not os.path.exists(client.save_path) and args.save_results:
                 os.mkdir(client.save_path)
         server = ServerDC(args, net_train, clients, data_info)
         print('{} FL server created.'.format(get_time()))
@@ -272,9 +272,7 @@ def main(args):
             # Evaluate synthetic data trained in last iteration, i.e., summary for client data condensation for this exp trial
             # print('{} Synthetic data evaluation started.'.format(get_time()))
             for client in clients:
-                client.syn_data_eval(exp, it, accs_all_clients_all_exps)                
-
-
+                client.syn_data_eval(exp, it, accs_all_clients_all_exps)          
                 if it == args.Iteration and args.save_results: # only record the final results
                     data_save_all_clients[client.id].append([copy.deepcopy(client.image_syn.detach().cpu()), copy.deepcopy(client.label_syn.detach().cpu())])
                     torch.save({'data': data_save_all_clients[client.id], 'accs_all_exps': accs_all_clients_all_exps[client.id], }, os.path.join(client.save_path, 'res_%s_%s_%s_%dipc.pt'%(client.args.method, client.args.dataset, client.args.model, client.args.ipc)))

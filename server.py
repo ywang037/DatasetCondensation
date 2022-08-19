@@ -87,19 +87,19 @@ class ServerDC(object):
         return w_avg
 
 
-    def push_model_to_clients(self, clients):
-        """ send global model parameters to a client's local cache
-            to be used before local training steps
-        """
-        for client in clients:
-            copy_parameters(target=client.model_train.parameters(), source=self.global_model_param)    
+    # def push_model_to_clients(self, clients):
+    #     """ send global model parameters to a client's local cache
+    #         to be used before local training steps
+    #     """
+    #     for client in clients:
+    #         copy_parameters(target=client.model_train.parameters(), source=self.global_model_param)    
 
-    def add_parameters(self, model, client, ratio):
-        """used for model aggregation, adding a client's model parameter scaled by ratio to
-            the corresponding parameters in the input model
-        """
-        for server_param, client_param in zip(model, client.get_parameters()):
-            server_param.data += client_param.data.clone() * ratio
+    # def add_parameters(self, model, client, ratio):
+    #     """used for model aggregation, adding a client's model parameter scaled by ratio to
+    #         the corresponding parameters in the input model
+    #     """
+    #     for server_param, client_param in zip(model, client.get_parameters()):
+    #         server_param.data += client_param.data.clone() * ratio
 
     # def model_aggregation(self, fed_model, clients):
     #     """ WARNING: this method has been deprecated.

@@ -34,7 +34,7 @@ def argparser():
     # default args - evluation
     parser.add_argument('--eval_mode', type=str, default='S', help='eval_mode') # S: the same to training model, M: multi architectures,  W: net width, D: net depth, A: activation function, P: pooling layer, N: normalization layer,
     parser.add_argument('--num_eval', type=int, default=20, help='the number randomly initialized models for evaluating the syn data')
-    parser.add_argument('--epoch_eval_train', type=int, default=300, help='epochs to train a model with synthetic data for evaluating the syn data')
+    parser.add_argument('--epoch_eval_train', type=int, default=50, help='epochs to train a model with synthetic data for evaluating the syn data')
 
     # default args - experiments
     parser.add_argument('--num_exp', type=int, default=5, help='the number of experiment runs')  
@@ -200,7 +200,7 @@ def main(args):
             # get a new random initialization of the network
             server.global_model = get_network(args.model, data_info['channel'], data_info['num_classes'], data_info['img_size']).to(args.device) 
             server.global_model_state = server.global_model.state_dict()
-            print('-------------------------\n{} {}-th model initialization sampled.'.format(get_time(), it))
+            # print('-------------------------\n{} {}-th model initialization sampled.'.format(get_time(), it))
             
             for client in clients:
                 # ''' get a new random initialization of the network '''
@@ -208,23 +208,23 @@ def main(args):
 
                 # fetch newly intialized server model weights '''
                 client.sync_with_server(server, method='state')
-                print('{} Client {} synced initial model with server.'.format(get_time(), client.id))
+                # print('{} Client {} synced initial model with server.'.format(get_time(), client.id))
 
                 # set the optimizer for learning synthetic data '''
                 optimizer_net = client.net_trainer_setup(client.model_train)
-                print('{} Client {} model optimizer set.'.format(get_time(), client.id))
+                # print('{} Client {} model optimizer set.'.format(get_time(), client.id))
 
 
             # NOTE this loop is indixed by T in the paper, Algorithm 1 line 4
             # this loop resembles the communication round in FL
             for ol in range(args.rounds): 
-                print('-------------------------\n{} {}-th round started.'.format(get_time(),ol))
+                # print('-------------------------\n{} {}-th round started.'.format(get_time(),ol))
 
                 # clients perform local update of data and network '''
                 for client in clients:
                     if not args.stand_alone and ol:
                         client.sync_with_server(server, method='state') # fetch server model weights
-                    print('{} Client {} synced with server.'.format(get_time(), client.id))
+                    # print('{} Client {} synced with server.'.format(get_time(), client.id))
 
                     # freeze the running mu and sigma for BatchNorm layers '''
                     # Synthetic data batch, e.g. only 1 image/batch, is too small to obtain stable mu and sigma.
@@ -247,22 +247,22 @@ def main(args):
                     # one step of SGD, can be repeated for multiple steps
                     # update only once but over T iterations equivalent to T steps of SGD for learning the data
                     client.syn_data_update(client.model_train)
-                    print('{} Client {} syntheic data updated.'.format(get_time(), client.id)) 
+                    # print('{} Client {} syntheic data updated.'.format(get_time(), client.id)) 
 
                     # local update of network (using synthetic data) '''
                     client.network_update(client.model_train, optimizer_net) 
                     client.local_model_state = copy.deepcopy(client.model_train.state_dict()) # copy the updated local model weights to another iterables to avoid any unaware modification
-                    print('{} Client {} model updated.'.format(get_time(), client.id))    
+                    # print('{} Client {} model updated.'.format(get_time(), client.id))    
 
                 # server side operation - update global model
                 if not args.stand_alone:
                     if args.server_mode == 'train': # Server perform aggregation-free global model update by training on client-uploaded synthetic data
                         server.update_server_syn_data(clients, server_train_batch_size=args.server_batch_train) # server first update its synthetic data set by receiving synthetic data from every clients
                         server.train_global_model(server_lr=args.server_lr, server_train_epoch=args.server_epoch_train) # server then update the global model by training on its server synthetic data set
-                        print('{} Server global model updated.'.format(get_time()))
+                        # print('{} Server global model updated.'.format(get_time()))
                     else: # Server perform model aggregation for synthetic updated model uploaded by clients
                         server.model_aggregation(clients) 
-                        print('{} Clients models aggregated.'.format(get_time()))
+                        # print('{} Clients models aggregated.'.format(get_time()))
 
             # monitor training loss of synthetic data
             for client in clients:

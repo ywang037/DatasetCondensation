@@ -91,6 +91,8 @@ def main(args):
     rng = np.random.default_rng(args.seed)    
     
     # some global setup
+    print('Hyper-parameters: \n', args.__dict__)
+    
     # if not os.path.exists(args.data_path):
     #     os.mkdir(args.data_path)
     if not os.path.exists(args.save_path) and args.save_results:
@@ -102,6 +104,7 @@ def main(args):
     eval_it_pool = [args.Iteration] # only evaluate at last iteration
     print('eval_it_pool: ', eval_it_pool)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
+    print('Evaluation model pool: ', model_eval_pool)
     data_set, data_info, server_testloader = data_preparation(args.dataset)
 
     accs_all_clients_all_exps = [dict() for i in range(args.num_clients)]
@@ -112,9 +115,7 @@ def main(args):
 
     # looping over multiple experiment trials
     for exp in range(args.num_exp):
-        print('\n{} ================== Exp {} ==================\n'.format(get_time(), exp))
-        print('Hyper-parameters: \n', args.__dict__)
-        print('Evaluation model pool: ', model_eval_pool)
+        print('\n{} ================== Exp {} ==================\n'.format(get_time(), exp))       
 
         # split data set for each client
         # generate training data partitioning using dirichlet distribution

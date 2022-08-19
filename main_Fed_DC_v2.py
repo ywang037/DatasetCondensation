@@ -199,7 +199,7 @@ def main(args):
             # get a new random initialization of the network
             server.global_model = get_network(args.model, data_info['channel'], data_info['num_classes'], data_info['img_size']).to(args.device) 
             server.global_model_state = server.global_model.state_dict()
-            print('{} {}-th model initialization sampled.'.format(get_time(), it))
+            print('-------------------------\n{} {}-th model initialization sampled.'.format(get_time(), it))
             
             for client in clients:
                 # ''' get a new random initialization of the network '''
@@ -217,7 +217,7 @@ def main(args):
             # NOTE this loop is indixed by T in the paper, Algorithm 1 line 4
             # this loop resembles the communication round in FL
             for ol in range(args.rounds): 
-                print('{} {}-th round started.'.format(get_time(),ol))
+                print('-------------------------\n{} {}-th round started.'.format(get_time(),ol))
 
                 # clients perform local update of data and network '''
                 for client in clients:
@@ -267,7 +267,7 @@ def main(args):
             for client in clients:
                 client.loss_avg /= (client.num_classes*args.rounds) 
                 if it%10 == 0:               
-                    print('%s Client %d iter = %04d, loss = %.4f' % (get_time(), client.id, it, client.loss_avg))
+                    print('%s Client %d iter = %04d, syn data train loss = %.4f' % (get_time(), client.id, it, client.loss_avg))
 
             # Evaluate synthetic data trained in last iteration, i.e., summary for client data condensation for this exp trial
             # print('{} Synthetic data evaluation started.'.format(get_time()))

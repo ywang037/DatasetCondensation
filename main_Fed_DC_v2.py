@@ -199,7 +199,7 @@ def main(args):
             # get a new random initialization of the network
             server.global_model = get_network(args.model, data_info['channel'], data_info['num_classes'], data_info['img_size']).to(args.device) 
             server.global_model_state = server.global_model.state_dict()
-            print('{} {d}-th model initialization sampled.'.format(get_time(), it))
+            print('{} {}-th model initialization sampled.'.format(get_time(), it))
             
             for client in clients:
                 # ''' get a new random initialization of the network '''

@@ -46,7 +46,7 @@ class ServerDC(object):
     def server_syn_data_init(self):
         ''' assumes that all clients have the same labels 
         '''
-        image_syn_init = torch.zeros(size=(self.num_classes*self.ipc, self.channel, self.im_size[0], self.im_size[1]), dtype=torch.float, requires_grad=False, device=self.device)
+        image_syn_init = torch.zeros(size=(self.num_classes*self.args.ipc, self.channel, self.im_size[0], self.im_size[1]), dtype=torch.float, requires_grad=False, device=self.device)
         return image_syn_init
         # label_syn_init = torch.tensor([np.ones(self.ipc)*i for i in range(self.num_classes)], dtype=torch.long, requires_grad=False, device='cpu').view(-1) # [0,0,0, 1,1,1, ..., 9,9,9]
         # return image_syn_init, label_syn_init

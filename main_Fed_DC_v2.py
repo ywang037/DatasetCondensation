@@ -175,7 +175,7 @@ def main(args):
         for client in clients:
             if not os.path.exists(client.save_path) and args.save_results:
                 os.mkdir(client.save_path)
-        server = ServerDC(args, net_train, clients, data_info)
+        server = ServerDC(args, net_train, clients, data_info, server_testloader)
         print('{} FL server created.'.format(get_time()))
 
         # organize the real dataset and initialize the synthetic data

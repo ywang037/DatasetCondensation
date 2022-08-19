@@ -1,6 +1,7 @@
 import time
 import os
 import sys
+import copy
 import numpy as np
 import torch
 import torch.nn as nn
@@ -180,6 +181,70 @@ def copy_parameters(target, source):
     """
     for target_param, src_param in zip(target, source):
         target_param.data = src_param.data.clone()
+
+def iter_trainer(args, clients, server):
+    ''' this function implements the learning process for a single model initialzation
+    '''
+    for client in clients:
+        client.sync_with_server(server, method='state') # fetch newly intialized server model weights
+        # print('{} Client {} synced initial model with server.'.format(get_time(), client.id))
+
+        # set the optimizer for learning model
+        # the model optimizer needs to be re-initialized for every Iteration, i.e., for every new model initialization
+        # whereas the data optimizer does not depends on model intialization, so that it just needs to be initalized once outside this Iteration loop
+        client.net_trainer_setup(client.model_train)
+        # print('{} Client {} model optimizer set.'.format(get_time(), client.id))   
+    
+    
+    # NOTE this loop is indixed by T in the paper, Algorithm 1 line 4
+    # this loop resembles the communication round in FL
+    for ol in range(args.rounds): 
+    # print('-------------------------\n{} {}-th round started.'.format(get_time(),ol))
+
+        # clients perform local update of data and network '''
+        for client in clients:
+            if not args.stand_alone and ol:
+                client.sync_with_server(server, method='state') # fetch server model weights
+            # print('{} Client {} synced with server.'.format(get_time(), client.id))
+
+            # freeze the running mu and sigma for BatchNorm layers '''
+            # Synthetic data batch, e.g. only 1 image/batch, is too small to obtain stable mu and sigma.
+            # So, we calculate and freeze mu and sigma for BatchNorm layer with real data batch ahead.
+            # This would make the training with BatchNorm layers easier.
+            BN_flag = False
+            BNSizePC = 16  # for batch normalization
+            for module in client.model_train.modules():
+                if 'BatchNorm' in module._get_name(): #BatchNorm
+                    BN_flag = True
+            if BN_flag:
+                img_real = torch.cat([client.get_images(c, BNSizePC) for c in range(client.num_classes)], dim=0)
+                client.model_train.train() # for updating the mu, sigma of BatchNorm
+                output_real = client.model_train(img_real) # get running mu, sigma
+                for module in client.model_train.modules():
+                    if 'BatchNorm' in module._get_name():  #BatchNorm
+                        module.eval() # fix mu and sigma of every BatchNorm layer
+
+            # local update of synthetic data '''
+            # one step of SGD, can be repeated for multiple steps
+            # update only once but over T iterations equivalent to T steps of SGD for learning the data
+            client.syn_data_update(client.model_train)
+            # print('{} Client {} syntheic data updated.'.format(get_time(), client.id)) 
+
+            # local update of network (using synthetic data) '''
+            client.network_update(client.model_train) 
+            client.local_model_state = copy.deepcopy(client.model_train.state_dict()) # copy the updated local model weights to another iterables to avoid any unaware modification
+            # print('{} Client {} model updated.'.format(get_time(), client.id))    
+
+        # server side operation - update global model
+        if not args.stand_alone:
+            if args.server_mode == 'train': # Server perform aggregation-free global model update by training on client-uploaded synthetic data
+                server.update_server_syn_data(clients, server_train_batch_size=args.server_batch_train) # server first update its synthetic data set by receiving synthetic data from every clients
+                server.train_global_model(server_lr=args.server_lr, server_train_epoch=args.server_epoch_train) # server then update the global model by training on its server synthetic data set
+                # print('{} Server global model updated.'.format(get_time()))
+            else: # Server perform model aggregation for synthetic updated model uploaded by clients
+                server.model_aggregation(clients) 
+                # print('{} Clients models aggregated.'.format(get_time()))
+
 
 '''the original code'''
 def get_dataset(dataset, data_path):
@@ -510,8 +575,37 @@ def epoch(mode, dataloader, net, optimizer, criterion, args, aug):
     return loss_avg, acc_avg
 
 
+def evaluate_synset(it_eval, net, images_train, labels_train, testloader, lr_net_eval_train, epoch_eval_train, batch_size_eval_train, args):
+    '''this function trains new models using condensed/synthetic data then evaluate the accuracy of this resulting model
+    '''
+    net = net.to(args.device)
+    images_train = images_train.to(args.device)
+    labels_train = labels_train.to(args.device)
+    lr = float(lr_net_eval_train)
+    Epoch = int(epoch_eval_train)
+    lr_schedule = [Epoch//2+1]
+    optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=0.0005)
+    criterion = nn.CrossEntropyLoss().to(args.device)
 
-def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args):
+    dst_train = TensorDataset(images_train, labels_train)
+    trainloader = torch.utils.data.DataLoader(dst_train, batch_size=batch_size_eval_train, shuffle=True, num_workers=0)
+    
+    # train the model to be evaluated
+    start = time.time()
+    for ep in range(Epoch+1):
+        loss_train, acc_train = epoch('train', trainloader, net, optimizer, criterion, args, aug = True)
+        if ep in lr_schedule:
+            lr *= 0.1
+            optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=0.9, weight_decay=0.0005)
+    time_train = time.time() - start
+    
+    # evaluate the model trained above
+    loss_test, acc_test = epoch('test', testloader, net, optimizer, criterion, args, aug = False)
+    print('%s Evaluate_%02d: epoch = %04d train time = %d s train loss = %.6f train acc = %.4f, test acc = %.4f' % (get_time(), it_eval, Epoch, int(time_train), loss_train, acc_train, acc_test))
+
+    return net, loss_test, acc_test
+
+def evaluate_synset_bak(it_eval, net, images_train, labels_train, testloader, args):
     '''this function trains new models using condensed/synthetic data then evaluate the accuracy of this resulting model
     '''
     net = net.to(args.device)

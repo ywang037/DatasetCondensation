@@ -71,7 +71,7 @@ class ServerDC(object):
         return
         
    
-    def net_weights_aggregation(self, selected_clients):
+    def model_aggregation(self, selected_clients):
         # update the state of the global model
         global_model_state_update = self.add_net_state(clients=selected_clients)
         self.global_model.load_state_dict(global_model_state_update)
@@ -113,7 +113,7 @@ class ServerDC(object):
         self.server_trianloader = server_trainloader
         return server_dataset_syn_train, server_trainloader
 
-    def server_model_update(self, server_lr, server_train_epoch):
+    def train_global_model(self, server_lr, server_train_epoch):
         ''' train server side global model using all the synthetic data uploaded from clients
         '''
         self.global_model.train()

@@ -42,23 +42,26 @@ def argparser():
     parser.add_argument('--seed', type=int, default=3, help='set a seed for reproducability, set to 0 to activate randomness')
     parser.add_argument('--client_alpha', type=float, default=100.0, help='dirichlet alpha for intra-cluster non-iid degree')
     parser.add_argument('--stand_alone', action='store_true', default=False, help='trigger non-federated local training mode')
+    parser.add_argument('--server_mode', type=str, default='train', help='operation model of server train or agg')
     parser.add_argument('--save_results', action='store_true', default=False, help='use this to save trained synthetic data and images')
     parser.add_argument('--server_lr', type=float, default=0.01, help='learning rate for updating global model by the server')
     parser.add_argument('--server_batch_train', type=int, default=128, help='batch size for training networks')
+    parser.add_argument('--server_epoch_train', type=int, default=10, help='epochs to train the global model with synthetic data')
 
     args = parser.parse_args()
     args.outer_loop, args.inner_loop = 10, 10
     # args.outer_loop, args.inner_loop = get_loops(args.ipc)
     args.dsa_param = ParamDiffAug()
     args.dsa = False if args.dsa_strategy in ['none', 'None'] else True
-    
+    args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     if args.stand_alone:
         save_tag = args.dataset + '_local' + time.strftime('_%y-%m-%d-%H-%M-%S') 
-    else:
-        save_tag = args.dataset + '_fed' + time.strftime('_%y-%m-%d-%H-%M-%S') 
-
+    elif args.server_mode == 'agg': # use model aggregation mode
+        save_tag = args.dataset + '_fed_agg' + time.strftime('_%y-%m-%d-%H-%M-%S') 
+    elif args.server_mode == 'train': # use model training mode
+        save_tag = args.dataset + '_fed_train' + time.strftime('_%y-%m-%d-%H-%M-%S') 
     args.save_path = os.path.join(args.save_root, save_tag) 
-    args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     return args
 
@@ -221,9 +224,13 @@ def main(args):
                     client.network_update(client.model_train, optimizer_net) 
                     client.local_model_state = copy.deepcopy(client.model_train.state_dict()) # copy the updated local model weights to another iterables to avoid any unaware modification   
 
-                # Server perform aggregation-free global model update by training on client-uploaded synthetic data
+                # server side operation
                 if not args.stand_alone:
-                    server.server_model_update(server_lr=args.server_lr, server_train_epoch=args.server_batch_train)
+                    if args.server_mode == 'train': # Server perform aggregation-free global model update by training on client-uploaded synthetic data
+                        server.update_server_syn_data(clients, server_train_batch_size=args.server_batch_train) # server first update its synthetic data set by receiving synthetic data from every clients
+                        server.server_model_update(server_lr=args.server_lr, server_train_epoch=args.server_epoch_train) # server then update the global model by training on its server synthetic data set
+                    else: # Server perform model aggregation for synthetic updated model uploaded by clients
+                        server.net_weights_aggregation(clients) 
 
             # Evaluate synthetic data trained in last iteration
             for client in clients:

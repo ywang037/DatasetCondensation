@@ -51,9 +51,9 @@ def argparser():
     args.dsa = False if args.dsa_strategy in ['none', 'None'] else True
     
     if args.stand_alone:
-        save_tag = 'fsd' + args.dataset + '_local' + time.strftime('_%y-%m-%d-%H-%M-%S') # fsd  = federated synthetic data
+        save_tag = args.dataset + '_local' + '_sd' + time.strftime('_%y-%m-%d-%H-%M-%S') # sd  = federated synthetic data
     else:
-        save_tag = 'fsd' + args.dataset + '_fed' + time.strftime('_%y-%m-%d-%H-%M-%S') 
+        save_tag = args.dataset + '_fed' + '_sd' + time.strftime('_%y-%m-%d-%H-%M-%S') 
 
     args.save_path = os.path.join(args.save_root, save_tag) 
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'

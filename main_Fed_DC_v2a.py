@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torchvision.utils import save_image
-from utils import data_preparation, gen_data_partition_iid, get_network, get_eval_pool, get_time, make_client_dataset_from_partition, ParamDiffAug, iter_trainer 
+from utils import data_preparation, gen_data_partition_iid, get_network, get_eval_pool, get_time, make_client_dataset_from_partition, ParamDiffAug, iter_trainer, epoch 
 # from utils import get_loops, get_dataset, gen_data_partition_dirichlet, evaluate_synset, get_daparam, match_loss, TensorDataset, epoch, DiffAugment
 
 import random
@@ -126,6 +126,7 @@ def main(args):
     for key in model_eval_pool:
         accs_server_all_exps[key] = []
     data_save_server = []
+    accs_global_model = []
 
     # looping over multiple experiment trials
     for exp in range(args.num_exp):
@@ -185,6 +186,7 @@ def main(args):
         print('%s Training session started'%get_time())
         
         # NOTE this loop is over the different model initializations, i.e., the loop indixed by K in the paper, Algorithm 1 line 4
+        loss_test, acc_test = [], []
         for it in range(args.Iteration+1): 
             # get a new random initialization of the network
             server.global_model = get_network(args.model, data_info['channel'], data_info['num_classes'], data_info['img_size']).to(args.device) 
@@ -259,6 +261,15 @@ def main(args):
                 if it%10 == 0:               
                     print('%s Iteration %04d: Client %d syn data train loss = %.4f' % (get_time(), it, client.id, client.loss_avg))
 
+            # For the current model initialization, after the final round of FL,
+            # evaluates the global model updated on the synthetic data using the central test data
+            loss_test_iter, acc_test_iter = epoch('test', central_testloader, server.global_model, None, server.criterion, args, aug = False)
+            loss_test.append(loss_test_iter) # record test loss
+            acc_test.append(acc_test_iter) # record test acc
+        
+        # record the mean accruacy of the global models updated on synthetic data for the current experiment run
+        accs_global_model.append(np.mean(acc_test))
+        
         # Evaluate synthetic data trained after last iteration
         # print('{} Synthetic data evaluation started.'.format(get_time()))
         for client in clients:
@@ -271,24 +282,26 @@ def main(args):
                             os.path.join(client.save_path, 'res_%s_%s_%s_%dipc.pt'%(client.args.method, client.args.dataset, client.args.model, client.args.ipc)))
 
         # Evaluate final global model trained on synthetic data lastly uploaded by clients
-        server.global_model_eval_final(accs_server_all_exps, args)
+        server.global_syn_data_eval_final(accs_server_all_exps, args)
 
 
     print('\n==================== Final Results ====================\n')
     for key in model_eval_pool:
+        # show the average accuracy for the local models trained on local synthetic data of each client
         acc_overall = []
         for i in range(args.num_clients):
-            accs = accs_all_clients_all_exps[i][key]
-            print('Client %d run %d experiments, train on %s, evaluate %d random %s, mean  = %.2f%%  std = %.2f%%'%(i, args.num_exp, args.model, len(accs), key, np.mean(accs)*100, np.std(accs)*100))
-            acc_overall += accs
-        print('\n-------------------------\nAverage performance after {:d} experiments, evaluted on {:2d} random {}, mean = {:.2f}%, std = {:.2f}%'.format(args.num_exp, len(acc_overall), args.model, np.mean(acc_overall)*100, np.std(accs)*100))
-
+            client_accs = accs_all_clients_all_exps[i][key]
+            # print('Client %d run %d experiments, train on %s, evaluate %d random %s, mean = %.2f%% std = %.2f%%\n-------------------------\n'%(i, args.num_exp, args.model, len(client_accs), key, np.mean(client_accs)*100, np.std(client_accs)*100))
+            acc_overall += client_accs
+        print('Overall average performance of local models for {:d} experiments, train on {}, evalaute over {:2d} random {}, mean = {:.2f}%, std = {:.2f}%'.format(args.num_exp, args.model, len(acc_overall), key, np.mean(acc_overall)*100, np.std(client_accs)*100))
+        
+        # show the average accuracy for the global models trained on global synthetic data
+        server_accs = accs_server_all_exps[key]
+        print('Performance of global models for %d experiments, train on %s, evaluate over %d random %s, mean  = %.2f%%  std = %.2f%%'%(args.num_exp, args.model, len(server_accs), key, np.mean(server_accs)*100, np.std(server_accs)*100))
 
 if __name__ == '__main__':
-    time_start = time.time()
-    
-    main(args=argparser())
-    
+    time_start = time.time()    
+    main(args=argparser())    
     time_end = time.time()
     sesseion_time = np.around((time_end-time_start)/3600, 2)
     print('Session time: {} hrs. That\'s all folks.'.format(sesseion_time))

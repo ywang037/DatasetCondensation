@@ -7,11 +7,11 @@ from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 import copy
 
-from utils import get_loops, get_dataset, get_network, get_eval_pool, evaluate_synset, get_daparam, match_loss, get_time, TensorDataset, epoch, DiffAugment, ParamDiffAug
-from utils import copy_parameters
+from utils import get_network,  evaluate_synset, get_daparam, match_loss, get_time, TensorDataset, epoch, copy_parameters
+# from utils import get_loops, get_dataset, get_eval_pool, DiffAugment, ParamDiffAug
           
 class ClientDC(object):
-    def __init__(self, id, args, net_train, data_info, data_train, data_test, eval_it_pool, model_eval_pool):
+    def __init__(self, id, args, net_train, data_info, data_train, data_test, eval_it_pool, model_eval_pool, central_testloader=None):
         
         self.id = id  # integer
         self.args = args
@@ -59,6 +59,7 @@ class ClientDC(object):
         self.lr_net_eval_train = args.lr_net_eval_train
         self.epoch_eval_train = args.client_epoch_eval_train
         self.batch_size_eval_train = args.client_batch_eval_train
+        self.central_testloader = central_testloader
 
    
     def organize_local_real_data(self):
@@ -137,21 +138,22 @@ class ClientDC(object):
         '''
         
         for model_eval in self.model_eval_pool:
-            print('-------------------------\n{} Client {} evaluation\nmodel_train = {}, model_eval = {}'.format(get_time(), self.id, self.args.model, model_eval))
-            self.args.dc_aug_param = get_daparam(self.args.dataset, self.args.model, model_eval, self.args.ipc) # This augmentation parameter set is only for DC method. It will be muted when args.dsa is True.
+            print('-------------------------\n{} Client {} evaluation\nmodel_train = {}, model_eval = {}'.format(get_time(), self.id, args.model, model_eval))
+            args.dc_aug_param = get_daparam(args.dataset, args.model, model_eval, args.ipc) # This augmentation parameter set is only for DC method. It will be muted when args.dsa is True.
             # print('DC augmentation parameters: \n', self.args.dc_aug_param)
             # self.args.epoch_eval_train = 300
 
             accs = []
-            for it_eval in range(self.args.num_eval):
+            for it_eval in range(args.num_eval):
                 # get a random model
-                net_eval = get_network(model_eval, self.channel, self.num_classes, self.im_size).to(self.device) 
+                net_eval = get_network(model_eval, self.channel, self.num_classes, self.im_size).to(args.device) 
                 
                 # avoid any unaware modification
                 image_syn_eval, label_syn_eval = copy.deepcopy(self.image_syn.detach()), copy.deepcopy(self.label_syn.detach()) 
                 
-                # trains new models using condensed/synthetic data then evaluate the accuracy of this resulting model
-                _, loss_test, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, self.local_testloader, self.lr_net_eval_train, self.epoch_eval_train, self.batch_size_eval_train, args)
+                # trains final models using condensed/synthetic data 
+                # then evaluate the accuracy of these resulting models on centralized test data, rather than local test data
+                _, loss_test, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, self.central_testloader, self.lr_net_eval_train, self.epoch_eval_train, self.batch_size_eval_train, args)
                 accs.append(acc_test)
             print('{} Client {} evaluated %d random %s, mean accuracy = %.4f std = %.4f\n-------------------------'%(get_time(), self.id, len(accs), model_eval, np.mean(accs), np.std(accs)))
 
@@ -159,14 +161,14 @@ class ClientDC(object):
             accs_all_clients_all_exps[self.id][model_eval] += accs
 
         # visualize and save the synthtic data (of each client)
-        if self.args.save_results:
-            save_name = os.path.join(self.save_path, 'vis_%s_%s_%s_%dipc_exp%d_final.png'%(self.args.method, self.args.dataset, self.args.model, self.args.ipc, exp))
+        if args.save_results:
+            save_name = os.path.join(self.save_path, 'vis_%s_%s_%s_%dipc_exp%d_final.png'%(args.method, args.dataset, args.model, args.ipc, exp))
             image_syn_vis = copy.deepcopy(self.image_syn.detach().cpu())
             for ch in range(self.channel):
                 image_syn_vis[:, ch] = image_syn_vis[:, ch]  * self.data_info['std'][ch] + self.data_info['mean'][ch]
             image_syn_vis[image_syn_vis<0] = 0.0
             image_syn_vis[image_syn_vis>1] = 1.0
-            save_image(image_syn_vis, save_name, nrow=self.args.ipc) # Trying normalize = True/False may get better visual effects.
+            save_image(image_syn_vis, save_name, nrow=args.ipc) # Trying normalize = True/False may get better visual effects.
         return
 
     def data_trainer_setup(self):

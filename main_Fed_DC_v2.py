@@ -268,7 +268,7 @@ def main(args):
             for client in clients:
                 client.loss_avg /= (client.num_classes*args.rounds) 
                 if it%10 == 0:               
-                    print('%s Client %d iter = %04d, syn data train loss = %.4f' % (get_time(), client.id, it, client.loss_avg))
+                    print('%s Iteration %04d: Client %d syn data train loss = %.4f' % (get_time(), client.id, it, client.loss_avg))
 
             # Evaluate synthetic data trained in last iteration, i.e., summary for client data condensation for this exp trial
             # print('{} Synthetic data evaluation started.'.format(get_time()))

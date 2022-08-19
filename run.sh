@@ -1,2 +1,3 @@
 python main_Fed_DC.py --dataset=CIFAR10 --model=ConvNet --ipc=1 --num_exp=5 --num_eval=10 --epoch_eval_train=50 --Iteration=50 --save_results --stand_alone
 # python main_Fed_DC_data.py --dataset=MNIST --model=ConvNet --ipc=1 --num_exp=5 --num_eval=10 --epoch_eval_train=50 --Iteration=50 --save_results --stand_alone
+# python main_Fed_DC2.py --dataset=MNIST --model=ConvNet --ipc=1 --num_exp=5 --num_eval=10 --epoch_eval_train=50 --Iteration=50 --save_results --stand_alone

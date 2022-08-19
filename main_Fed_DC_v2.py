@@ -7,8 +7,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torchvision.utils import save_image
-from utils import get_loops, get_dataset, get_network, get_eval_pool, evaluate_synset, get_daparam, match_loss, get_time, TensorDataset, epoch, DiffAugment, ParamDiffAug
-from utils import data_preparation, gen_data_partition_iid, gen_data_partition_dirichlet, make_client_dataset_from_partition
+from utils import data_preparation, gen_data_partition_iid, get_network, get_eval_pool, get_time, make_client_dataset_from_partition, ParamDiffAug 
+# from utils import get_loops, get_dataset, gen_data_partition_dirichlet, evaluate_synset, get_daparam, match_loss, TensorDataset, epoch, DiffAugment
 
 import random
 from client import ClientDC
@@ -112,7 +112,7 @@ def main(args):
 
     # looping over multiple experiment trials
     for exp in range(args.num_exp):
-        print('\n================== Exp %d ==================\n '%exp)
+        print('\n{} ================== Exp {d} ==================\n'.format(get_time(), exp))
         print('Hyper-parameters: \n', args.__dict__)
         print('Evaluation model pool: ', model_eval_pool)
 
@@ -165,6 +165,7 @@ def main(args):
         # make client data using the generated partition
         client_data_train = make_client_dataset_from_partition(data_set['train_data'], args.num_clients, client_train_data_idcs)
         client_data_test = make_client_dataset_from_partition(data_set['test_data'], args.num_clients, client_test_data_idcs)
+        print('{} Data partitioning done.'.format(get_time()))
 
         # set the architecture for the network to be trained
         net_train = get_network(args.model, data_info['channel'], data_info['num_classes'], data_info['img_size']).to(args.device)
@@ -172,26 +173,33 @@ def main(args):
         # create clients and server
         clients = [ClientDC(id, args, net_train, data_info, client_data_train[i], client_data_test[i], eval_it_pool, model_eval_pool) for id in range(args.num_clients)]
         for client in clients:
-            print('Client {} has {} training samples {} testing samples'.format(client.id, client.num_local_data_train, client.num_local_data_test))
+            if not os.path.exists(client.save_path):
+                os.mkdir(client.save_path)
         server = ServerDC(args, net_train, clients, data_info)
-        print('FL server created.')
+        print('{} FL server created.'.format(get_time()))
 
         # organize the real dataset and initialize the synthetic data
         for client in clients:
+            print('{} Client {} has {} training samples {} testing samples'.format(get_time(), client.id, client.num_local_data_train, client.num_local_data_test))
             client.organize_local_real_data()
-            for ch in range(client.channel):
-                print('real images channel %d, mean = %.4f, std = %.4f'%(ch, torch.mean(client.images_all[:, ch]), torch.std(client.images_all[:, ch])))
+            print('{} Client {d} real data organization done.'.format(get_time(),client.id))
+            # for ch in range(client.channel):
+            #     print('real images channel %d, mean = %.4f, std = %.4f'%(ch, torch.mean(client.images_all[:, ch]), torch.std(client.images_all[:, ch])))
             client.syn_data_init()
+            print('{} Client {d} synthetic data initialized.'.format(get_time(),client.id))
             client.data_trainer_setup() # only to be called after syn_data_init()
+            print('{} Client {d} synthetic data optimizer set.'.format(get_time(),client.id))
+        
 
         # training starts from here '''
-        print('%s training begins'%get_time())
+        print('%s Training session started'%get_time())
         
         # NOTE this loop is over the different model initializations, i.e., the loop indixed by K in the paper, Algorithm 1 line 4
         for it in range(args.Iteration+1): 
             # get a new random initialization of the network
             server.global_model = get_network(args.model, data_info['channel'], data_info['num_classes'], data_info['img_size']).to(args.device) 
             server.global_model_state = server.global_model.state_dict()
+            print('{} {d}-th model initialization sampled.'.format(get_time(), it))
             
             for client in clients:
                 # ''' get a new random initialization of the network '''
@@ -199,19 +207,23 @@ def main(args):
 
                 # fetch newly intialized server model weights '''
                 client.sync_with_server(server, method='state')
+                print('{} Client {} synced initial model with server.'.format(get_time()))
 
                 # set the optimizer for learning synthetic data '''
                 optimizer_net = client.net_trainer_setup(client.model_train)
+                print('{} Client {} model optimizer set.'.format(get_time()))
 
 
             # NOTE this loop is indixed by T in the paper, Algorithm 1 line 4
             # this loop resembles the communication round in FL
             for ol in range(args.rounds): 
+                print('{} {d}-th round started.'.format(get_time(),ol))
 
                 # clients perform local update of data and network '''
                 for client in clients:
                     if not args.stand_alone and ol:
                         client.sync_with_server(server, method='state') # fetch server model weights
+                    print('{} Client {} synced with server.'.format(get_time(), client.id))
 
                     # freeze the running mu and sigma for BatchNorm layers '''
                     # Synthetic data batch, e.g. only 1 image/batch, is too small to obtain stable mu and sigma.
@@ -233,30 +245,36 @@ def main(args):
                     # local update of synthetic data '''
                     # one step of SGD, can be repeated for multiple steps
                     # update only once but over T iterations equivalent to T steps of SGD for learning the data
-                    client.syn_data_update(client.model_train) 
+                    client.syn_data_update(client.model_train)
+                    print('{} Client {} syntheic data updated.'.format(get_time(), client.id)) 
 
                     # local update of network (using synthetic data) '''
                     client.network_update(client.model_train, optimizer_net) 
-                    client.local_model_state = copy.deepcopy(client.model_train.state_dict()) # copy the updated local model weights to another iterables to avoid any unaware modification   
+                    client.local_model_state = copy.deepcopy(client.model_train.state_dict()) # copy the updated local model weights to another iterables to avoid any unaware modification
+                    print('{} Client {} model updated.'.format(get_time(), client.id))    
 
                 # server side operation - update global model
                 if not args.stand_alone:
                     if args.server_mode == 'train': # Server perform aggregation-free global model update by training on client-uploaded synthetic data
                         server.update_server_syn_data(clients, server_train_batch_size=args.server_batch_train) # server first update its synthetic data set by receiving synthetic data from every clients
                         server.train_global_model(server_lr=args.server_lr, server_train_epoch=args.server_epoch_train) # server then update the global model by training on its server synthetic data set
+                        print('{} Server global model updated.'.format(get_time()))
                     else: # Server perform model aggregation for synthetic updated model uploaded by clients
                         server.model_aggregation(clients) 
+                        print('{} Clients models aggregated.'.format(get_time()))
 
-            # Evaluate synthetic data trained in last iteration
+            # monitor training loss of synthetic data
             for client in clients:
-                client.syn_data_eval(exp, it, accs_all_clients_all_exps)
-                client.loss_avg /= (client.num_classes*args.rounds) # Summary for client data condensation for this exp trial
+                client.loss_avg /= (client.num_classes*args.rounds) 
+                if it%10 == 0:               
+                    print('%s Client %d iter = %04d, loss = %.4f' % (get_time(), client.id, it, client.loss_avg))
 
-                if not os.path.exists(client.save_path):
-                    os.mkdir(client.save_path)
-                
-                if it%10 == 0:
-                    print('%s iter = %04d, loss = %.4f' % (get_time(), it, client.loss_avg))
+            # Evaluate synthetic data trained in last iteration, i.e., summary for client data condensation for this exp trial
+            # print('{} Synthetic data evaluation started.'.format(get_time()))
+            for client in clients:
+                client.syn_data_eval(exp, it, accs_all_clients_all_exps)                
+
+
                 if it == args.Iteration and args.save_results: # only record the final results
                     data_save_all_clients[client.id].append([copy.deepcopy(client.image_syn.detach().cpu()), copy.deepcopy(client.label_syn.detach().cpu())])
                     torch.save({'data': data_save_all_clients[client.id], 'accs_all_exps': accs_all_clients_all_exps[client.id], }, os.path.join(client.save_path, 'res_%s_%s_%s_%dipc.pt'%(client.args.method, client.args.dataset, client.args.model, client.args.ipc)))

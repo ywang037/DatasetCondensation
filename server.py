@@ -27,6 +27,8 @@ class ServerDC(object):
         self.global_model_state = copy.deepcopy(self.global_model.state_dict())
         self.clients = clients
 
+        self.image_syn_train = None 
+        self.label_syn_train = None
         self.server_syn_data = None
         self.server_trianloader = None
         self.server_testloader = server_testloader
@@ -106,8 +108,8 @@ class ServerDC(object):
         for id in range(1,len(clients)):
             all_label = torch.cat((all_label, clients[id].label_syn))
             all_data = torch.cat((all_data, clients[id].image_syn))
-        image_syn_train, label_syn_train = copy.deepcopy(all_data.detach()), copy.deepcopy(all_label.detach()) 
-        server_dataset_syn_train = TensorDataset(image_syn_train, label_syn_train)
+        self.image_syn_train, self.label_syn_train = copy.deepcopy(all_data.detach()), copy.deepcopy(all_label.detach()) 
+        server_dataset_syn_train = TensorDataset(self.image_syn_train, self.label_syn_train)
         server_trainloader = torch.utils.data.DataLoader(server_dataset_syn_train, batch_size=server_train_batch_size, shuffle=True)
         self.server_syn_data = server_dataset_syn_train
         self.server_trianloader = server_trainloader

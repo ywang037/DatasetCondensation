@@ -524,7 +524,7 @@ def evaluate_synset(it_eval, net, images_train, labels_train, testloader, args):
     criterion = nn.CrossEntropyLoss().to(args.device)
 
     dst_train = TensorDataset(images_train, labels_train)
-    trainloader = torch.utils.data.DataLoader(dst_train, batch_size=args.batch_train, shuffle=True, num_workers=0)
+    trainloader = torch.utils.data.DataLoader(dst_train, batch_size=args.client_batch_train_model, shuffle=True, num_workers=0)
 
     start = time.time()
     for ep in range(Epoch+1):

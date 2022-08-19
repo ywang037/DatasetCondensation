@@ -186,12 +186,12 @@ class ClientDC(object):
         dataset_syn_train = TensorDataset(image_syn_train, label_syn_train)
         net_trainloader = torch.utils.data.DataLoader(dataset_syn_train, batch_size=self.batch_size_learn_model, shuffle=True, num_workers=0)
         
-        # NOTE the following loop is iterated for local model updates by SGD, 
+        # the following loop is iterated for local model updates by SGD, 
         # i.e., line 9 in Algorithm 1 the args.inner_loop controls number of SGD steps, 
-        # the number of args.inner_loop will be the number of local updates, 
-        # note that because number of sythetic data is small, however the batch size is large by default, e.g., 256
+        # because number of sythetic data is small whereas the batch size is large by default, e.g., 256
         # so that one epoch may only have one SGD update using all the available synthetic data
-        for il in range(self.args.inner_loop):
+        # in this case, the number of client_epoch_train equals the number of local update
+        for il in range(self.args.client_epoch_train):
             epoch('train', net_trainloader, net, optimizer_net, self.criterion, self.args, aug = False)
             
 

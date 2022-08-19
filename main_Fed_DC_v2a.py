@@ -45,10 +45,12 @@ def argparser():
     # args - fed/server
     parser.add_argument('--stand_alone', action='store_true', default=False, help='trigger non-federated local training mode')
     parser.add_argument('--server_mode', type=str, default='train', help='operation model of server train or agg')
-    parser.add_argument('--server_lr', type=float, default=0.01, help='learning rate for updating global model by the server')
-    parser.add_argument('--server_batch_train', type=int, default=128, help='batch size for training networks')
-    parser.add_argument('--server_epoch_train', type=int, default=10, help='epochs to train the global model with synthetic data')
-    parser.add_argument('--epoch_eval_train', type=int, default=50, help='epochs to train a model with synthetic data for evaluating the syn data')
+    parser.add_argument('--server_lr', type=float, default=0.01, help='server learning rate for updating global model by the server')
+    parser.add_argument('--server_batch_train', type=int, default=128, help='server batch size for training global model')
+    parser.add_argument('--server_epoch_train', type=int, default=10, help='server epochs to train global model with synthetic data')
+    parser.add_argument('--server_lr_eval_train', type=float, default=0.01, help='server learning rate for training global model in evaluaiton')
+    parser.add_argument('--server_batch_eval_train', type=int, default=128, help='server batch size for training global models in evaluation')
+    parser.add_argument('--server_epoch_eval_train', type=int, default=50, help='server epochs to train global model with synthetic data in evaluation')
 
     
     # args - fed/clients
@@ -61,8 +63,6 @@ def argparser():
     parser.add_argument('--lr_net_eval_train', type=float, default=0.01, help='learning rate for model updates in evaluaiton') 
     parser.add_argument('--client_batch_eval_train', type=int, default=128, help='batch size for training models in evaluation')
     parser.add_argument('--client_epoch_eval_train', type=int, default=50, help='epochs to train a model with synthetic data in evaluation')
-
-
 
     # args - results
     parser.add_argument('--save_results', action='store_true', default=False, help='use this to save trained synthetic data and images')
@@ -111,44 +111,25 @@ def main(args):
     print('eval_it_pool: ', eval_it_pool)
     model_eval_pool = get_eval_pool(args.eval_mode, args.model, args.model)
     print('Evaluation model pool: ', model_eval_pool)
-    data_set, data_info, server_testloader = data_preparation(args.dataset)
+    data_set, data_info, central_testloader = data_preparation(args.dataset)
 
+    # record performance for all experiment runs
+    # records intialized for clients
     accs_all_clients_all_exps = [dict() for i in range(args.num_clients)]
     for i in range(args.num_clients):
         for key in model_eval_pool:
             accs_all_clients_all_exps[i][key]=[]
     data_save_all_clients = [[] for i in range(args.num_clients)]
+    
+    # records intialized for server
+    accs_server_all_exps = dict() 
+    for key in model_eval_pool:
+        accs_server_all_exps[key] = []
+    data_save_server = []
 
     # looping over multiple experiment trials
     for exp in range(args.num_exp):
-        print('\n{} ================== Exp {} ==================\n'.format(get_time(), exp))       
-
-        # split data set for each client
-        # generate training data partitioning using dirichlet distribution
-        # client_label_dist, client_train_data_idcs, client_train_class_dict = gen_data_partition_dirichlet(
-        #     data=data_set['train_data'], 
-        #     num_classes=data_info['num_classes'], 
-        #     labels=data_set['train_labels'], 
-        #     data_mapp=data_set['mapp'],
-        #     num_clients=args.num_clients, 
-        #     generator=rng, 
-        #     client_alpha=args.client_alpha, 
-        #     client_label_dist=None, 
-        #     verbose_hist=False
-        #     )
-
-        # generate testing data partitioning
-        # _, client_test_data_idcs, client_test_class_dict = gen_data_partition_dirichlet(
-        #     data=data_set['test_data'], 
-        #     num_classes=data_info['num_classes'], 
-        #     labels=data_set['test_labels'], 
-        #     data_mapp=data_set['mapp'],
-        #     num_clients=args.num_clients, 
-        #     generator=rng, 
-        #     client_alpha=args.client_alpha, 
-        #     client_label_dist=client_label_dist, 
-        #     verbose_hist=False
-        #     )
+        print('\n{} ================== Exp {} ==================\n'.format(get_time(), exp))
         
         # generate training data partitioning using IID method
         client_train_data_idcs, client_train_class_dict = gen_data_partition_iid(
@@ -182,7 +163,9 @@ def main(args):
         for client in clients:
             if not os.path.exists(client.save_path) and args.save_results:
                 os.mkdir(client.save_path)
-        server = ServerDC(args, net_train, clients, data_info, server_testloader)
+        server = ServerDC(args, net_train, clients, data_info, central_testloader)
+        if not os.path.exists(server.save_path) and args.save_results:
+                os.mkdir(server.save_path)
         print('{} FL server created.'.format(get_time()))
 
         # organize the real dataset and initialize the synthetic data
@@ -210,7 +193,65 @@ def main(args):
 
             # perform model and data training
             # the training is either federated or local, iterated over all rounds
-            iter_trainer(args, clients, server) 
+            for client in clients:
+                client.sync_with_server(server, method='state') # fetch newly intialized server model weights
+                # print('{} Client {} synced initial model with server.'.format(get_time(), client.id))
+
+                # set the optimizer for learning model
+                # the model optimizer needs to be re-initialized for every Iteration, i.e., for every new model initialization
+                # whereas the data optimizer does not depends on model intialization, so that it just needs to be initalized once outside this Iteration loop
+                client.net_trainer_setup(client.model_train)
+                # print('{} Client {} model optimizer set.'.format(get_time(), client.id))   
+        
+        
+            # NOTE this loop is indixed by T in the paper, Algorithm 1 line 4
+            # this loop resembles the communication round in FL
+            for ol in range(args.rounds): 
+            # print('-------------------------\n{} {}-th round started.'.format(get_time(),ol))
+
+                # clients perform local update of data and network '''
+                for client in clients:
+                    if not args.stand_alone and ol:
+                        client.sync_with_server(server, method='state') # fetch server model weights
+                    # print('{} Client {} synced with server.'.format(get_time(), client.id))
+
+                    # freeze the running mu and sigma for BatchNorm layers '''
+                    # Synthetic data batch, e.g. only 1 image/batch, is too small to obtain stable mu and sigma.
+                    # So, we calculate and freeze mu and sigma for BatchNorm layer with real data batch ahead.
+                    # This would make the training with BatchNorm layers easier.
+                    BN_flag = False
+                    BNSizePC = 16  # for batch normalization
+                    for module in client.model_train.modules():
+                        if 'BatchNorm' in module._get_name(): #BatchNorm
+                            BN_flag = True
+                    if BN_flag:
+                        img_real = torch.cat([client.get_images(c, BNSizePC) for c in range(client.num_classes)], dim=0)
+                        client.model_train.train() # for updating the mu, sigma of BatchNorm
+                        output_real = client.model_train(img_real) # get running mu, sigma
+                        for module in client.model_train.modules():
+                            if 'BatchNorm' in module._get_name():  #BatchNorm
+                                module.eval() # fix mu and sigma of every BatchNorm layer
+
+                    # local update of synthetic data '''
+                    # one step of SGD, can be repeated for multiple steps
+                    # update only once but over T iterations equivalent to T steps of SGD for learning the data
+                    client.syn_data_update(client.model_train)
+                    # print('{} Client {} syntheic data updated.'.format(get_time(), client.id)) 
+
+                    # local update of network (using synthetic data) '''
+                    client.network_update(client.model_train) 
+                    client.local_model_state = copy.deepcopy(client.model_train.state_dict()) # copy the updated local model weights to another iterables to avoid any unaware modification
+                    # print('{} Client {} model updated.'.format(get_time(), client.id))    
+
+                # server side operation - update global model
+                if not args.stand_alone:
+                    if args.server_mode == 'train': # Server perform aggregation-free global model update by training on client-uploaded synthetic data
+                        server.update_server_syn_data(clients, server_train_batch_size=args.server_batch_train) # server first update its synthetic data set by receiving synthetic data from every clients
+                        server.train_global_model(server_lr=args.server_lr, server_train_epoch=args.server_epoch_train) # server then update the global model by training on its server synthetic data set
+                        # print('{} Server global model updated.'.format(get_time()))
+                    else: # Server perform model aggregation for synthetic updated model uploaded by clients
+                        server.model_aggregation(clients) 
+                        # print('{} Clients models aggregated.'.format(get_time()))
 
             # monitor training loss of synthetic data
             for client in clients:
@@ -218,13 +259,20 @@ def main(args):
                 if it%10 == 0:               
                     print('%s Iteration %04d: Client %d syn data train loss = %.4f' % (get_time(), it, client.id, client.loss_avg))
 
-        # Evaluate synthetic data trained in last iteration, i.e., summary for client data condensation for this exp trial
+        # Evaluate synthetic data trained after last iteration
         # print('{} Synthetic data evaluation started.'.format(get_time()))
         for client in clients:
-            client.syn_data_eval(exp, accs_all_clients_all_exps, args)          
-            if it == args.Iteration and args.save_results: # only record the final results
+            client.syn_data_eval_final(exp, accs_all_clients_all_exps, args)          
+            
+            # only record the final results
+            if args.save_results: 
                 data_save_all_clients[client.id].append([copy.deepcopy(client.image_syn.detach().cpu()), copy.deepcopy(client.label_syn.detach().cpu())])
-                torch.save({'data': data_save_all_clients[client.id], 'accs_all_exps': accs_all_clients_all_exps[client.id], }, os.path.join(client.save_path, 'res_%s_%s_%s_%dipc.pt'%(client.args.method, client.args.dataset, client.args.model, client.args.ipc)))
+                torch.save({'data': data_save_all_clients[client.id], 'accs_all_exps': accs_all_clients_all_exps[client.id], }, 
+                            os.path.join(client.save_path, 'res_%s_%s_%s_%dipc.pt'%(client.args.method, client.args.dataset, client.args.model, client.args.ipc)))
+
+        # Evaluate final global model trained on synthetic data lastly uploaded by clients
+        server.global_model_eval_final(accs_server_all_exps, args)
+
 
     print('\n==================== Final Results ====================\n')
     for key in model_eval_pool:

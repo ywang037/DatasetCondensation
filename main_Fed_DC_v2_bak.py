@@ -107,11 +107,19 @@ def main(args):
     print('Evaluation model pool: ', model_eval_pool)
     data_set, data_info, server_testloader = data_preparation(args.dataset)
 
+    # record performance for all experiment runs
+    # records intialized for clients
     accs_all_clients_all_exps = [dict() for i in range(args.num_clients)]
     for i in range(args.num_clients):
         for key in model_eval_pool:
             accs_all_clients_all_exps[i][key]=[]
     data_save_all_clients = [[] for i in range(args.num_clients)]
+    
+    # records intialized for server
+    accs_server_all_exps = dict() 
+    for key in model_eval_pool:
+        accs_server_all_exps[key] = []
+    data_save_server = []
 
     # looping over multiple experiment trials
     for exp in range(args.num_exp):

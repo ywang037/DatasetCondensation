@@ -210,8 +210,10 @@ def main(args):
                 client.sync_with_server(server, method='state')
                 # print('{} Client {} synced initial model with server.'.format(get_time(), client.id))
 
-                # set the optimizer for learning synthetic data '''
-                optimizer_net = client.net_trainer_setup(client.model_train)
+                # set the optimizer for learning model
+                # the model optimizer needs to be re-initialized for every Iteration, i.e., for every new model initialization
+                # whereas the data optimizer does not depends on model intialization, so that it just needs to be initalized once outside this Iteration loop
+                client.net_trainer_setup(client.model_train)
                 # print('{} Client {} model optimizer set.'.format(get_time(), client.id))
 
 
@@ -250,7 +252,7 @@ def main(args):
                     # print('{} Client {} syntheic data updated.'.format(get_time(), client.id)) 
 
                     # local update of network (using synthetic data) '''
-                    client.network_update(client.model_train, optimizer_net) 
+                    client.network_update(client.model_train) 
                     client.local_model_state = copy.deepcopy(client.model_train.state_dict()) # copy the updated local model weights to another iterables to avoid any unaware modification
                     # print('{} Client {} model updated.'.format(get_time(), client.id))    
 

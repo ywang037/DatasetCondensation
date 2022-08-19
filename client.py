@@ -94,7 +94,7 @@ class ClientDC(object):
         ''' Evaluate synthetic data '''
         if it in self.eval_it_pool:
             for model_eval in self.model_eval_pool:
-                print('-------------------------\n{} Client {} evaluation\nmodel_train = {}, model_eval = {}, iteration = {d}'.format(get_time(), self.id, self.args.model, model_eval, it))
+                print('-------------------------\n{} Client {} evaluation\nmodel_train = {}, model_eval = {}, iteration = {}'.format(get_time(), self.id, self.args.model, model_eval, it))
                 self.args.dc_aug_param = get_daparam(self.args.dataset, self.args.model, model_eval, self.args.ipc) # This augmentation parameter set is only for DC method. It will be muted when args.dsa is True.
                 # print('DC augmentation parameters: \n', self.args.dc_aug_param)
                 self.args.epoch_eval_train = 300

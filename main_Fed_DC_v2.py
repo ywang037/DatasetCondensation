@@ -182,13 +182,13 @@ def main(args):
         for client in clients:
             print('{} Client {} has {} training samples {} testing samples'.format(get_time(), client.id, client.num_local_data_train, client.num_local_data_test))
             client.organize_local_real_data()
-            print('{} Client {d} real data organization done.'.format(get_time(),client.id))
+            print('{} Client {} real data organization done.'.format(get_time(),client.id))
             # for ch in range(client.channel):
             #     print('real images channel %d, mean = %.4f, std = %.4f'%(ch, torch.mean(client.images_all[:, ch]), torch.std(client.images_all[:, ch])))
             client.syn_data_init()
-            print('{} Client {d} synthetic data initialized.'.format(get_time(),client.id))
+            print('{} Client {} synthetic data initialized.'.format(get_time(),client.id))
             client.data_trainer_setup() # only to be called after syn_data_init()
-            print('{} Client {d} synthetic data optimizer set.'.format(get_time(),client.id))
+            print('{} Client {} synthetic data optimizer set.'.format(get_time(),client.id))
         
 
         # training starts from here '''

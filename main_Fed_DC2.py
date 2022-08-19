@@ -30,7 +30,7 @@ def argparser():
     parser.add_argument('--lr_img', type=float, default=0.1, help='learning rate for updating synthetic images')
     parser.add_argument('--lr_net', type=float, default=0.01, help='learning rate for updating network parameters')
     parser.add_argument('--batch_real', type=int, default=256, help='batch size for real data')
-    parser.add_argument('--batch_train', type=int, default=256, help='batch size for training networks')
+    parser.add_argument('--batch_train', type=int, default=128, help='batch size for training networks')
     parser.add_argument('--init', type=str, default='noise', help='noise/real: initialize synthetic images from random noise or randomly sampled real images.')
     parser.add_argument('--dsa_strategy', type=str, default='None', help='differentiable Siamese augmentation strategy')
     parser.add_argument('--data_path', type=str, default='data', help='dataset path')
@@ -43,6 +43,8 @@ def argparser():
     parser.add_argument('--client_alpha', type=float, default=100.0, help='dirichlet alpha for intra-cluster non-iid degree')
     parser.add_argument('--stand_alone', action='store_true', default=False, help='trigger non-federated local training mode')
     parser.add_argument('--save_results', action='store_true', default=False, help='use this to save trained synthetic data and images')
+    parser.add_argument('--server_lr', type=float, default=0.01, help='learning rate for updating global model by the server')
+    parser.add_argument('--server_batch_train', type=int, default=128, help='batch size for training networks')
 
     args = parser.parse_args()
     args.outer_loop, args.inner_loop = 10, 10
@@ -219,9 +221,9 @@ def main(args):
                     client.network_update(client.model_train, optimizer_net) 
                     client.local_model_state = copy.deepcopy(client.model_train.state_dict()) # copy the updated local model weights to another iterables to avoid any unaware modification   
 
-                # Server perform model aggregation upon local network updates
+                # Server perform aggregation-free global model update by training on client-uploaded synthetic data
                 if not args.stand_alone:
-                    server.net_weights_aggregation(clients)
+                    server.server_model_update(server_lr=args.server_lr, server_train_epoch=args.server_batch_train)
 
             # Evaluate synthetic data trained in last iteration
             for client in clients:

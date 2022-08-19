@@ -468,6 +468,10 @@ def get_loops(ipc):
 
 
 def epoch(mode, dataloader, net, optimizer, criterion, args, aug):
+    ''' implements the model update for one epoch, 
+        if the number of data is smaller than the dataloader's batch size
+        then the only one batch contains all the data, and the number of update per epoch is equal to one
+    '''
     loss_avg, acc_avg, num_exp = 0, 0, 0
     net = net.to(args.device)
     criterion = criterion.to(args.device)

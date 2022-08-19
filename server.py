@@ -1,15 +1,18 @@
 # import os
 from http import server
+import os
 import numpy as np
 import random
 import copy
 import torch
 import torch.nn as nn
-from utils import copy_parameters, TensorDataset, epoch, get_time
+from torchvision.utils import save_image
+from utils import copy_parameters, TensorDataset, epoch, get_time, get_daparam, get_network, evaluate_synset
+
 
 
 class ServerDC(object):
-    def __init__(self, args, net_train, clients, data_info, server_testloader=None):
+    def __init__(self, args, net_train, clients, data_info, central_testloader=None):
         ''' whether the argument clients and attribute self.clients are needed pending further decision
         '''
 
@@ -31,9 +34,14 @@ class ServerDC(object):
         self.label_syn_train = None
         self.server_syn_data = None
         self.server_trianloader = None
-        self.server_testloader = server_testloader
+        self.server_testloader = central_testloader
         self.criterion = nn.CrossEntropyLoss().to(self.device)
         # self.selected_clients = []
+
+        self.lr_net_eval_train = args.server_lr_eval_train
+        self.epoch_eval_train = args.server_epoch_eval_train
+        self.batch_size_eval_train = args.server_batch_eval_train
+        self.save_path = os.path.join(args.save_path, 'server')
 
     # def select_clients(self, clients, frac=1.0):
     #     '''selects clients from possible_clients
@@ -134,6 +142,44 @@ class ServerDC(object):
         # print('%s Evaluate_%02d: epoch = %04d train time = %d s train loss = %.6f train acc = %.4f, test acc = %.4f' % (get_time(), it_eval, Epoch, int(time_train), loss_train, acc_train, acc_test))
         return
 
+    def global_model_eval_final(self, accs_server_all_exps, args):
+        ''' Evaluate synthetic data after training is done
+        '''
+        
+        for model_eval in args.model_eval_pool:
+            print('-------------------------\n{} Server evaluation\nmodel_train = {}, model_eval = {}'.format(get_time(), args.model, model_eval))
+            args.dc_aug_param = get_daparam(args.dataset, args.model, model_eval, args.ipc) # This augmentation parameter set is only for DC method. It will be muted when args.dsa is True.
+            # print('DC augmentation parameters: \n', self.args.dc_aug_param)
+            # self.args.epoch_eval_train = 300
+
+            accs = []
+            for it_eval in range(args.num_eval):
+                # get a random model
+                net_eval = get_network(model_eval, self.channel, self.num_classes, self.im_size).to(self.device) 
+                
+                # avoid any unaware modification
+                image_syn_eval, label_syn_eval = copy.deepcopy(self.image_syn_train.detach()), copy.deepcopy(self.label_syn_train.detach()) 
+                
+                # trains final models using condensed/synthetic data 
+                # then evaluate the accuracy of these resulting models on centralized test data
+                _, loss_test, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, self.server_testloader, self.lr_net_eval_train, self.epoch_eval_train, self.batch_size_eval_train, args)
+                accs.append(acc_test)
+            print('{} Server evaluated %d random %s, mean accuracy = %.4f std = %.4f\n-------------------------'%(get_time(), len(accs), model_eval, np.mean(accs), np.std(accs)))
+
+            # record the final results
+            accs_server_all_exps[model_eval] += accs
+
+        # # not sure if it is necessary to save server-side synthetic data since it is just a collection of all client synthetic data which is saved already
+        # # visualize and save the server's synthtic data
+        # if args.save_results:
+        #     save_name = os.path.join(self.save_path, 'vis_%s_%s_%s_%dipc_exp%d_final.png'%(self.args.method, self.args.dataset, self.args.model, self.args.ipc, exp))
+        #     image_syn_vis = copy.deepcopy(self.image_syn_train.detach().cpu())
+        #     for ch in range(self.channel):
+        #         image_syn_vis[:, ch] = image_syn_vis[:, ch]  * self.data_info['std'][ch] + self.data_info['mean'][ch]
+        #     image_syn_vis[image_syn_vis<0] = 0.0
+        #     image_syn_vis[image_syn_vis>1] = 1.0
+        #     save_image(image_syn_vis, save_name, nrow=args.ipc) # Trying normalize = True/False may get better visual effects.
+        return
 
     # def push_model_to_clients(self, clients):
     #     """ send global model parameters to a client's local cache

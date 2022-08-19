@@ -5,10 +5,8 @@ import random
 import copy
 import torch
 import torch.nn as nn
-from utils import copy_parameters, TensorDataset, epoch
-# from torch.utils.data import DataLoader
-# import numpy as np
-# from sklearn.cluster import AgglomerativeClustering, SpectralClustering
+from utils import copy_parameters, TensorDataset, epoch, get_time
+
 
 class ServerDC(object):
     def __init__(self, args, net_train, clients, data_info, server_testloader=None):

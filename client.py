@@ -115,7 +115,7 @@ class ClientDC(object):
                 if it == self.args.Iteration: # record the final results
                     accs_all_clients_all_exps[self.id][model_eval] += accs
 
-            ''' visualize and save '''
+            # visualize and save the synthtic data (of each client)
             if self.args.save_results:
                 save_name = os.path.join(self.save_path, 'vis_%s_%s_%s_%dipc_exp%d_iter%d.png'%(self.args.method, self.args.dataset, self.args.model, self.args.ipc, exp, it))
                 image_syn_vis = copy.deepcopy(self.image_syn.detach().cpu())

@@ -188,7 +188,7 @@ def main(args):
             client.syn_data_init()
             print('{} Client {} synthetic data initialized.'.format(get_time(),client.id))
             client.data_trainer_setup() # only to be called after syn_data_init()
-            print('{} Client {} synthetic data optimizer set.'.format(get_time(),client.id))
+            print('{} Client {} synthetic data optimizer set.\n-------------------------'.format(get_time(),client.id))
         
 
         # training starts from here '''

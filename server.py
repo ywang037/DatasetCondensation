@@ -135,14 +135,15 @@ class ServerDC(object):
         for r in range(server_train_epoch):
             loss_train, acc_train = epoch('train', self.server_trianloader, self.global_model, optimizer_server, self.criterion, self.args, aug = False)
         
-        # server evaluates the accuracy of the global model using the central test data
-        loss_test, acc_test = epoch('test', self.server_testloader, self.global_model, optimizer_server, self.criterion, self.args, aug = False)
+        # # server evaluates the accuracy of the global model using the central test data
+        # loss_test, acc_test = epoch('test', self.server_testloader, self.global_model, optimizer_server, self.criterion, self.args, aug = False)
         
+        # TODO: server may need to check the train loss for tunining num of epochs
         # print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
         # print('%s Evaluate_%02d: epoch = %04d train time = %d s train loss = %.6f train acc = %.4f, test acc = %.4f' % (get_time(), it_eval, Epoch, int(time_train), loss_train, acc_train, acc_test))
         return
 
-    def global_model_eval_final(self, accs_server_all_exps, args):
+    def global_syn_data_eval_final(self, accs_server_all_exps, args):
         ''' Evaluate synthetic data after training is done
         '''
         

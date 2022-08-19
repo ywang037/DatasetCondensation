@@ -54,9 +54,9 @@ def argparser():
     
     # args - fed/clients
     parser.add_argument('--rounds', type=int, default=10, help='epochs to train the global model with synthetic data')
-    parser.add_argument('--batch_real', type=int, default=256, help='batch size for real data')
-    parser.add_argument('--batch_train', type=int, default=128, help='batch size for training networks')
     parser.add_argument('--client_epoch_train', type=int, default=10, help='epochs to train the local model with synthetic data')
+    parser.add_argument('--client_batch_train_data', type=int, default=256, help='batch size for real data')
+    parser.add_argument('--client_batch_train_model', type=int, default=128, help='batch size for training networks')
 
     # args - results
     parser.add_argument('--save_results', action='store_true', default=False, help='use this to save trained synthetic data and images')

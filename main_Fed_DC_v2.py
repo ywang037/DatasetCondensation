@@ -48,7 +48,6 @@ def argparser():
     # args - fed/server
     parser.add_argument('--stand_alone', action='store_true', default=False, help='trigger non-federated local training mode')
     parser.add_argument('--server_mode', type=str, default='train', help='operation model of server train or agg')
-    parser.add_argument('--save_results', action='store_true', default=False, help='use this to save trained synthetic data and images')
     parser.add_argument('--server_lr', type=float, default=0.01, help='learning rate for updating global model by the server')
     parser.add_argument('--server_batch_train', type=int, default=128, help='batch size for training networks')
     parser.add_argument('--server_epoch_train', type=int, default=10, help='epochs to train the global model with synthetic data')
@@ -59,6 +58,8 @@ def argparser():
     parser.add_argument('--batch_train', type=int, default=128, help='batch size for training networks')
     parser.add_argument('--client_epoch_train', type=int, default=10, help='epochs to train the local model with synthetic data')
 
+    # args - results
+    parser.add_argument('--save_results', action='store_true', default=False, help='use this to save trained synthetic data and images')
     parser.add_argument('--save_root', type=str, default='result', help='path to save results')
     args = parser.parse_args()
 
@@ -205,7 +206,7 @@ def main(args):
 
             # NOTE this loop is indixed by T in the paper, Algorithm 1 line 4
             # this loop resembles the communication round in FL
-            for ol in range(args.outer_loop): 
+            for ol in range(args.rounds): 
 
                 # clients perform local update of data and network '''
                 for client in clients:
@@ -249,7 +250,7 @@ def main(args):
             # Evaluate synthetic data trained in last iteration
             for client in clients:
                 client.syn_data_eval(exp, it, accs_all_clients_all_exps)
-                client.loss_avg /= (client.num_classes*args.outer_loop) # Summary for client data condensation for this exp trial
+                client.loss_avg /= (client.num_classes*args.rounds) # Summary for client data condensation for this exp trial
 
                 if not os.path.exists(client.save_path):
                     os.mkdir(client.save_path)

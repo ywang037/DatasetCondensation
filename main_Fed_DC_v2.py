@@ -17,39 +17,52 @@ from server import ServerDC
 def argparser():
     parser = argparse.ArgumentParser(description='Federated DC using gradient matching')
 
-    # default args
-    parser.add_argument('--method', type=str, default='DC', help='DC/DSA')
+    # default args - data set and model
     parser.add_argument('--dataset', type=str, default='CIFAR10', help='dataset')
+    parser.add_argument('--data_path', type=str, default='data', help='dataset path')
     parser.add_argument('--model', type=str, default='ConvNet', help='model')
+
+    # default args - condensation
+    parser.add_argument('--method', type=str, default='DC', help='DC/DSA')
+    parser.add_argument('--init', type=str, default='noise', help='noise/real: initialize synthetic images from random noise or randomly sampled real images.')
+    parser.add_argument('--dsa_strategy', type=str, default='None', help='differentiable Siamese augmentation strategy')  
     parser.add_argument('--ipc', type=int, default=1, help='image(s) per class')
-    parser.add_argument('--eval_mode', type=str, default='S', help='eval_mode') # S: the same to training model, M: multi architectures,  W: net width, D: net depth, A: activation function, P: pooling layer, N: normalization layer,
-    parser.add_argument('--num_exp', type=int, default=5, help='the number of experiments')
-    parser.add_argument('--num_eval', type=int, default=20, help='the number of evaluating randomly initialized models')
-    parser.add_argument('--epoch_eval_train', type=int, default=300, help='epochs to train a model with synthetic data')
-    parser.add_argument('--Iteration', type=int, default=1000, help='training iterations')
+    parser.add_argument('--dis_metric', type=str, default='ours', help='distance metric for gradient matching')
     parser.add_argument('--lr_img', type=float, default=0.1, help='learning rate for updating synthetic images')
     parser.add_argument('--lr_net', type=float, default=0.01, help='learning rate for updating network parameters')
-    parser.add_argument('--batch_real', type=int, default=256, help='batch size for real data')
-    parser.add_argument('--batch_train', type=int, default=128, help='batch size for training networks')
-    parser.add_argument('--init', type=str, default='noise', help='noise/real: initialize synthetic images from random noise or randomly sampled real images.')
-    parser.add_argument('--dsa_strategy', type=str, default='None', help='differentiable Siamese augmentation strategy')
-    parser.add_argument('--data_path', type=str, default='data', help='dataset path')
-    parser.add_argument('--save_root', type=str, default='result', help='path to save results')
-    parser.add_argument('--dis_metric', type=str, default='ours', help='distance metric')
 
-    # addon args
+    # default args - evluation
+    parser.add_argument('--eval_mode', type=str, default='S', help='eval_mode') # S: the same to training model, M: multi architectures,  W: net width, D: net depth, A: activation function, P: pooling layer, N: normalization layer,
+    parser.add_argument('--num_eval', type=int, default=20, help='the number of evaluating randomly initialized models')
+    parser.add_argument('--epoch_eval_train', type=int, default=300, help='[for evaluation] epochs to train a model with synthetic data')
+
+    # default args - experiments
+    parser.add_argument('--num_exp', type=int, default=5, help='the number of experiments')  
+    parser.add_argument('--Iteration', type=int, default=1000, help='training iterations')
+
+    # args - fed/overall
     parser.add_argument('--num_clients', type=int, default=5, help='number of clients')
     parser.add_argument('--seed', type=int, default=3, help='set a seed for reproducability, set to 0 to activate randomness')
     parser.add_argument('--client_alpha', type=float, default=100.0, help='dirichlet alpha for intra-cluster non-iid degree')
+    
+    # args - fed/server
     parser.add_argument('--stand_alone', action='store_true', default=False, help='trigger non-federated local training mode')
     parser.add_argument('--server_mode', type=str, default='train', help='operation model of server train or agg')
     parser.add_argument('--save_results', action='store_true', default=False, help='use this to save trained synthetic data and images')
     parser.add_argument('--server_lr', type=float, default=0.01, help='learning rate for updating global model by the server')
     parser.add_argument('--server_batch_train', type=int, default=128, help='batch size for training networks')
     parser.add_argument('--server_epoch_train', type=int, default=10, help='epochs to train the global model with synthetic data')
+    
+    # args - fed/clients
+    parser.add_argument('--rounds', type=int, default=10, help='epochs to train the global model with synthetic data')
+    parser.add_argument('--batch_real', type=int, default=256, help='batch size for real data')
+    parser.add_argument('--batch_train', type=int, default=128, help='batch size for training networks')
+    parser.add_argument('--client_epoch_train', type=int, default=10, help='epochs to train the local model with synthetic data')
+
+    parser.add_argument('--save_root', type=str, default='result', help='path to save results')
 
     args = parser.parse_args()
-    args.outer_loop, args.inner_loop = 10, 10
+    # args.outer_loop, args.inner_loop = 10, 10
     # args.outer_loop, args.inner_loop = get_loops(args.ipc)
     args.dsa_param = ParamDiffAug()
     args.dsa = False if args.dsa_strategy in ['none', 'None'] else True
@@ -224,13 +237,13 @@ def main(args):
                     client.network_update(client.model_train, optimizer_net) 
                     client.local_model_state = copy.deepcopy(client.model_train.state_dict()) # copy the updated local model weights to another iterables to avoid any unaware modification   
 
-                # server side operation
+                # server side operation - update global model
                 if not args.stand_alone:
                     if args.server_mode == 'train': # Server perform aggregation-free global model update by training on client-uploaded synthetic data
                         server.update_server_syn_data(clients, server_train_batch_size=args.server_batch_train) # server first update its synthetic data set by receiving synthetic data from every clients
-                        server.server_model_update(server_lr=args.server_lr, server_train_epoch=args.server_epoch_train) # server then update the global model by training on its server synthetic data set
+                        server.train_global_model(server_lr=args.server_lr, server_train_epoch=args.server_epoch_train) # server then update the global model by training on its server synthetic data set
                     else: # Server perform model aggregation for synthetic updated model uploaded by clients
-                        server.net_weights_aggregation(clients) 
+                        server.model_aggregation(clients) 
 
             # Evaluate synthetic data trained in last iteration
             for client in clients:

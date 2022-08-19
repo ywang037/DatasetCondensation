@@ -220,8 +220,9 @@ class ClientDC(object):
         self.optimizer_img.step()
         self.loss_avg += loss.item()
 
-    def network_update(self, net, optimizer_net, server=None):
-        ''' update network '''
+    def network_update(self, net, server=None):
+        ''' client locally update models using newly trained local synthetic data
+        '''
         if (server is not None) and (not self.args.stand_alone):
             # in federated mode and use server aggregated syn data
             # assume all clients share common labels
@@ -238,7 +239,7 @@ class ClientDC(object):
         # so that one epoch may only have one SGD update using all the available synthetic data
         # in this case, the number of client_epoch_train equals the number of local update
         for il in range(self.args.client_epoch_train):
-            epoch('train', net_trainloader, net, optimizer_net, self.criterion, self.args, aug = False)
+            epoch('train', net_trainloader, net, self.optimizer_net, self.criterion, self.args, aug = False)
             
 
     '''below are client functions for federated learning'''

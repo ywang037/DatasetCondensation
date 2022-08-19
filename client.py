@@ -83,20 +83,20 @@ class ClientDC(object):
         self.label_syn = torch.tensor([np.ones(self.ipc)*i for i in range(self.num_classes)], dtype=torch.long, requires_grad=False, device=self.device).view(-1) # [0,0,0, 1,1,1, ..., 9,9,9]
 
         if self.args.init == 'real':
-            print('initialize synthetic data from random real images')
+            print('{} Client {} initialized synthetic data from random real images'.format(get_time(), self.id))
             for c in range(self.num_classes):
                 self.image_syn.data[c*self.ipc:(c+1)*self.ipc] = self.get_images(c, self.ipc).detach().data
         else:
-            print('initialize synthetic data from random noise')
+            print('{} Client {} initialized synthetic data from random noise'.format(get_time(), self.id))
         return
 
     def syn_data_eval(self, exp, it, accs_all_clients_all_exps):
         ''' Evaluate synthetic data '''
         if it in self.eval_it_pool:
             for model_eval in self.model_eval_pool:
-                print('-------------------------\nEvaluation\nmodel_train = %s, model_eval = %s, iteration = %d'%(self.args.model, model_eval, it))
+                print('-------------------------\n{} Client {} evaluation\nmodel_train = {}, model_eval = {}, iteration = {d}'.format(get_time(), self.id, self.args.model, model_eval, it))
                 self.args.dc_aug_param = get_daparam(self.args.dataset, self.args.model, model_eval, self.args.ipc) # This augmentation parameter set is only for DC method. It will be muted when args.dsa is True.
-                print('DC augmentation parameters: \n', self.args.dc_aug_param)
+                # print('DC augmentation parameters: \n', self.args.dc_aug_param)
                 self.args.epoch_eval_train = 300
 
                 accs = []
@@ -110,7 +110,7 @@ class ClientDC(object):
                     # trains new models using condensed/synthetic data then evaluate the accuracy of this resulting model
                     _, acc_train, acc_test = evaluate_synset(it_eval, net_eval, image_syn_eval, label_syn_eval, self.local_testloader, self.args)
                     accs.append(acc_test)
-                print('Evaluate %d random %s, mean = %.4f std = %.4f\n-------------------------'%(len(accs), model_eval, np.mean(accs), np.std(accs)))
+                print('{} Client {} evaluated %d random %s, mean accuracy = %.4f std = %.4f\n-------------------------'%(get_time(), self.id, len(accs), model_eval, np.mean(accs), np.std(accs)))
 
                 if it == self.args.Iteration: # record the final results
                     accs_all_clients_all_exps[self.id][model_eval] += accs

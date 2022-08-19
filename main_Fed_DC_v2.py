@@ -112,7 +112,7 @@ def main(args):
 
     # looping over multiple experiment trials
     for exp in range(args.num_exp):
-        print('\n{} ================== Exp {d} ==================\n'.format(get_time(), exp))
+        print('\n{} ================== Exp {} ==================\n'.format(get_time(), exp))
         print('Hyper-parameters: \n', args.__dict__)
         print('Evaluation model pool: ', model_eval_pool)
 
